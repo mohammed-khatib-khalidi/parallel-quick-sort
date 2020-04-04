@@ -2,7 +2,7 @@
 #include "timer.h"
 
 //The partition kernel method
-__global__ void partition_kernel(float* arr, int start, int end, float* arrCopy, float* lessThan, float* greaterThan, int pivotIdx, int k)
+__global__ void partition_kernel(float* arr, float* arrCopy, float* lessThan, float* greaterThan, int start, int end, int pivotIdx, int k)
 {
 	//Calculate the size of the array
     int arrSize = end - start + 1;
@@ -53,10 +53,12 @@ __global__ void partition_kernel(float* arr, int start, int end, float* arrCopy,
 __global__ void quicksort_advanced_kernel(float* arr, int start, int end)
 {
     //Get size of the array
-    int arrSize = end - start + 1
+    int arrSize = end - start + 1;
 
     //Allocate memory for the three arrays
-    float* arrCopy, lessThan, greaterThan;
+    float* arrCopy;
+    float* lessThan;
+    float* greaterThan;
     cudaMalloc((void**) &arrCopy, arrSize * sizeof(float));
     cudaMalloc((void**) &lessThan, arrSize * sizeof(float));
     cudaMalloc((void**) &lessThan, arrSize * sizeof(float));
@@ -69,7 +71,7 @@ __global__ void quicksort_advanced_kernel(float* arr, int start, int end)
 
     //Partition
     int k = 0;
-    partition_kernel <<< numBlocks, numThreadsPerBlock >>> (arr, start, end, arrCopy, lessThan, greaterThan, pivotIdx, &k);
+    partition_kernel <<< numBlocks, numThreadsPerBlock >>> (arr, arrCopy, lessThan, greaterThan, start, end, pivotIdx, k);
 
     //Sort the left partition
     if(start < k - 1) {
@@ -121,14 +123,32 @@ __global__ void quicksort_naive_kernel(float* arr, int start, int end)
     //Partition
     int k = partition_gpu(arr, start, end);
 
-    //Sort the left partition
     if(start < k - 1) {
-        quicksort_naive_kernel <<< 1, 1 >>> (arr, start, k - 1);
+        //Create cuda stream to run recursive calls in parallel
+        cudaStream_t s_left;
+
+        //Set the non-blocking flag for the cuda stream
+        cudaStreamCreateWithFlags(&s_left, cudaStreamNonBlocking);
+
+        //Sort the left partition
+        quicksort_naive_kernel <<< 1, 1, 0, s_left >>> (arr, start, k - 1);
+
+        //Destroy the stream after getting done from it
+        cudaStreamDestroy(s_left);
     }
 
-    //Sort the right partition
     if(k + 1 < end) {
-        quicksort_naive_kernel <<< 1, 1 >>> (arr, k + 1, end);
+        //Create cuda stream to run recursive calls in parallel
+        cudaStream_t s_right;
+
+        //Set the non-blocking flag for the cuda stream
+        cudaStreamCreateWithFlags(&s_right, cudaStreamNonBlocking);
+
+        //Sort the right partition
+        quicksort_naive_kernel <<< 1, 1, 0, s_right >>> (arr, k + 1, end);
+
+        //Destroy the stream after getting done from it
+        cudaStreamDestroy(s_right);
     }
 }
 
