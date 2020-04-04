@@ -69,7 +69,7 @@ __global__ void quicksort_advanced_kernel(float* arr, int start, int end)
 
     //Partition
     int k = 0;
-    partition_gpu <<< numBlocks, numThreadsPerBlock >>> (arr, start, end, arrCopy, lessThan, greaterThan, pivotIdx, &k);
+    partition_kernel <<< numBlocks, numThreadsPerBlock >>> (arr, start, end, arrCopy, lessThan, greaterThan, pivotIdx, &k);
 
     //Sort the left partition
     if(start < k - 1) {
