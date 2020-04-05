@@ -15,53 +15,53 @@
 #include "device_launch_parameters.h"
 #endif
 
-//The partition kernel method
+// The partition kernel method
 __global__ void Partition_Kernel(float* arr, float* arrCopy, float* lessThan, float* greaterThan, int start, int end, int pivotIdx, int k)
 {
-	//Calculate the size of the array
+	// Calculate the size of the array
     int arrSize = end - start + 1;
     
-    //Compute the thread index
+    // Compute the thread index
     int tid = blockDim.x * blockIdx.x + threadIdx.x;
 
-    //Compute the real array index
+    // Compute the real array index
     int index = start + tid;
 
-	//In case the array was only one item then return the start index
+	// In case the array was only one item then return the start index
 	if (arrSize == 1) 
 	{
-        //Allow only the first thread to modify partition k
+        // Allow only the first thread to modify partition k
         if (tid == 0) 
 			k = start;
-        //Stop here
+        // Stop here
         return;
     }
 
-    //Compute the pivot value
+    // Compute the pivot value
     float pivot = arr[pivotIdx];
 
-    //Copy to temporary array
+    // Copy to temporary array
     arrCopy[tid] = arr[index];
 
-    //Copy to the lessThan array
+    // Copy to the lessThan array
     if(arr[index] < pivot) 
         lessThan[tid] = 1;
     else 
         lessThan[tid] = 0;
 
-    //Copy to the greaterThan array
+    // Copy to the greaterThan array
     if(arr[index] > pivot) 
         greaterThan[tid] = 1;
     else
         greaterThan[tid] = 0;
 
-    //Sync all threads
+    // Sync all threads
     __syncthreads();
 
-    //Now we will start performing the prefix sum for the lessThan and greaterThan arrays
+    // Now we will start performing the prefix sum for the lessThan and greaterThan arrays
 }
 
-//Swap two elements of an array
+// Swap two elements of an array
 __device__  void Swap_GPU(float* a, float* b)
 {
 	float temp = *a;
@@ -69,20 +69,20 @@ __device__  void Swap_GPU(float* a, float* b)
 	*b = temp;
 }
 
-//Computes the partition after rearranging the array
+// Computes the partition after rearranging the array
 __device__ int Partition_GPU(float* arr, int start, int end)
 {
-    //Index of smaller element
+    // Index of smaller element
 	int i = start - 1;
 
 	for (int j = start; j < end; j++)
 	{
-		//If current element is smaller than the pivot
+		// If current element is smaller than the pivot
 		if (arr[j] < arr[end])
 		{
-			//Increment the index of the smaller element
+			// Increment the index of the smaller element
 			i++;
-			//Swap array elements with indices i and j
+			// Swap array elements with indices i and j
 			Swap_GPU(&arr[i], &arr[j]);
 		}
 	}
@@ -94,39 +94,39 @@ __device__ int Partition_GPU(float* arr, int start, int end)
 	return (i + 1);
 }
 
-//Naive version of the parallel quicksort which only parallelizes recursive calls
+// Naive version of the parallel quicksort which only parallelizes recursive calls
 __global__ void Quicksort_Naive_Kernel(float* arr, int start, int end)
 {
-    //Partition
+    // Partition
     int k = Partition_GPU(arr, start, end);
 
     if(start < k - 1) 
 	{
-        //Create cuda stream to run recursive calls in parallel
+        // Create cuda stream to run recursive calls in parallel
         cudaStream_t s_left;
 
-        //Set the non-blocking flag for the cuda stream
+        // Set the non-blocking flag for the cuda stream
         cudaStreamCreateWithFlags(&s_left, cudaStreamNonBlocking);
 
-        //Sort the left partition
+        // Sort the left partition
 		Quicksort_Naive_Kernel <<< 1, 1, 0, s_left >>> (arr, start, k - 1);
 
-        //Destroy the stream after getting done from it
+        // Destroy the stream after getting done from it
         cudaStreamDestroy(s_left);
     }
 
     if(k + 1 < end) 
 	{
-        //Create cuda stream to run recursive calls in parallel
+        // Create cuda stream to run recursive calls in parallel
         cudaStream_t s_right;
 
-        //Set the non-blocking flag for the cuda stream
+        // Set the non-blocking flag for the cuda stream
         cudaStreamCreateWithFlags(&s_right, cudaStreamNonBlocking);
 
-        //Sort the right partition
+        // Sort the right partition
 		Quicksort_Naive_Kernel <<< 1, 1, 0, s_right >>> (arr, k + 1, end);
 
-        //Destroy the stream after getting done from it
+        // Destroy the stream after getting done from it
         cudaStreamDestroy(s_right);
     }
 }
@@ -134,34 +134,37 @@ __global__ void Quicksort_Naive_Kernel(float* arr, int start, int end)
 //Advanced version of the parallel quicksort which parallelizes both the partition method and the recursive calls
 __global__ void Quicksort_Advanced_Kernel(float* arr, int start, int end)
 {
-	//Get size of the array
+	// Get size of the array
 	int arrSize = end - start + 1;
 
-	//Allocate memory for the three arrays
+	// Allocate memory for the three arrays
 	float* arrCopy;
 	float* lessThan;
 	float* greaterThan;
+
 	cudaMalloc((void**)&arrCopy, arrSize * sizeof(float));
 	cudaMalloc((void**)&lessThan, arrSize * sizeof(float));
 	cudaMalloc((void**)&lessThan, arrSize * sizeof(float));
 
 	int pivotIdx = (start + end) / 2;
 
-	//Configure the number of blocks and threads per block
+	// Configure the number of blocks and threads per block
 	const unsigned int numThreadsPerBlock = 512;
 	const unsigned int numBlocks = (arrSize + numThreadsPerBlock - 1) / numThreadsPerBlock;
 
-	//Partition
+	// Partition
 	int k = 0;
 	Partition_Kernel << < numBlocks, numThreadsPerBlock >> > (arr, arrCopy, lessThan, greaterThan, start, end, pivotIdx, k);
 
-	//Sort the left partition
-	if (start < k - 1) {
+	// Sort the left partition
+	if (start < k - 1) 
+	{
 		Quicksort_Advanced_Kernel << < 1, 1 >> > (arr, start, k - 1);
 	}
 
-	//Sort the right partition
-	if (k + 1 < end) {
+	// Sort the right partition
+	if (k + 1 < end) 
+	{
 		Quicksort_Advanced_Kernel << < 1, 1 >> > (arr, k + 1, end);
 	}
 }

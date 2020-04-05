@@ -68,7 +68,7 @@
     </Link>
     <CudaCompile>
       <TargetMachinePlatform>64</TargetMachinePlatform>
-      <CodeGeneration>compute_50,sm_50</CodeGeneration>
+      <CodeGeneration>compute_30,sm_30;%(CodeGeneration)</CodeGeneration>
       <GenerateRelocatableDeviceCode>true</GenerateRelocatableDeviceCode>
       <CudaRuntime>Shared</CudaRuntime>
       <GenerateLineInfo>true</GenerateLineInfo>
