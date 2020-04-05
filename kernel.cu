@@ -94,50 +94,6 @@ __device__ int Partition_GPU(float* arr, int start, int end)
 	return (i + 1);
 }
 
-#if defined _WIN32 || defined _WIN64
-// Naive version of the parallel quicksort which only parallelizes recursive calls
-__device__ void Quicksort_Naive_Kernel_WIN(float* arr, int start, int end)
-{
-	//Partition
-	int k = Partition_GPU(arr, start, end);
-
-	if (start < k - 1)
-	{
-		//Create cuda stream to run recursive calls in parallel
-		cudaStream_t s_left;
-
-		//Set the non-blocking flag for the cuda stream
-		cudaStreamCreateWithFlags(&s_left, cudaStreamNonBlocking);
-
-		//Sort the left partition
-		Quicksort_Naive_Kernel_WIN << < 1, 1, 0, s_left >> > (arr, start, k - 1);
-
-		//Destroy the stream after getting done from it
-		cudaStreamDestroy(s_left);
-	}
-
-	if (k + 1 < end)
-	{
-		//Create cuda stream to run recursive calls in parallel
-		cudaStream_t s_right;
-
-		//Set the non-blocking flag for the cuda stream
-		cudaStreamCreateWithFlags(&s_right, cudaStreamNonBlocking);
-
-		//Sort the right partition
-		Quicksort_Naive_Kernel_WIN << < 1, 1, 0, s_right >> > (arr, k + 1, end);
-
-		//Destroy the stream after getting done from it
-		cudaStreamDestroy(s_right);
-	}
-}
-
-// Naive version of the parallel quicksort which only parallelizes recursive calls
-__global__ void Quicksort_Naive_Kernel_Global_WIN(float* arr, int start, int end)
-{
-	Quicksort_Naive_Kernel_WIN(arr, start, end);
-}
-#elif defined LINUX
 //Naive version of the parallel quicksort which only parallelizes recursive calls
 __global__ void Quicksort_Naive_Kernel(float* arr, int start, int end)
 {
@@ -209,7 +165,6 @@ __global__ void Quicksort_Advanced_Kernel(float* arr, int start, int end)
 		Quicksort_Advanced_Kernel << < 1, 1 >> > (arr, k + 1, end);
 	}
 }
-#endif
 
 void Quicksort_GPU(float* arr, int arrSize)
 {
@@ -241,15 +196,7 @@ void Quicksort_GPU(float* arr, int arrSize)
     //Sorting on GPU
     if(arrSize > 1) 
 	{
-#if defined _WIN32 || defined _WIN64
-
-		Quicksort_Naive_Kernel_Global_WIN << < 1, 1, 0 >> > (arr_d, 0, arrSize - 1);
-
-#elif defined LINUX
-
 		Quicksort_Naive_Kernel << < 1, 1, 0 >> > (arr_d, 0, arrSize - 1);
-
-#endif
     }
 
     cudaDeviceSynchronize();
