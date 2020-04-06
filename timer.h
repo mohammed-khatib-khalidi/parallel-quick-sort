@@ -6,11 +6,13 @@
 // A work around for Windows users instead of the POSIX <sys/time.h>, it uses the files: time.h, times.h, times.c
 #if defined _WIN32 || defined _WIN64
 #include "time.h" 
+#else
+#include <sys/time.h>	
 #endif
 
-#if defined LINUX
-#include <sys/time.h>
-#endif
+//#if defined linux
+//#include <sys/time.h>
+//#endif
 
 typedef struct
 {
