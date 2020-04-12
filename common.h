@@ -1,3 +1,3 @@
 #define ARRAY_SIZE 10000
 
-void Quicksort_GPU(float* array, int arraySize);
+void quicksort_gpu(float* array, int arraySize);

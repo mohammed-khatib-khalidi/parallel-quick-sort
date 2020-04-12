@@ -16,7 +16,7 @@
 #endif
 
 // Swap two elements of an array
-void Swap_CPU(float* a, float* b)
+void swap_cpu(float* a, float* b)
 {
 	float temp = *a;
 	*a = *b;
@@ -24,44 +24,44 @@ void Swap_CPU(float* a, float* b)
 }
 
 // Computes the partition after rearranging the array
-int Partition_CPU(float* arr, int start, int end)
+int partition_cpu(float* arr, int arrSize)
 {
 	// Index of smaller element
-    int i = start - 1;
+    int i = - 1;
 
-	for (int j = start; j < end; j++)
+	for (int j = 0; j < arrSize - 1; j++)
 	{
 		// If current element is smaller than the pivot
-		if (arr[j] < arr[end])
+		if (arr[j] < arr[arrSize - 1])
 		{
 			// Increment the index of the smaller element
 			i++;
 			// Swap array elements with indices i and j
-			Swap_CPU(&arr[i], &arr[j]);
+			swap_cpu(&arr[i], &arr[j]);
 		}
 	}
 
 	// Swap array elements with indices i + 1 and pivot
-	Swap_CPU(&arr[i + 1], &arr[end]);
+	swap_cpu(&arr[i + 1], &arr[arrSize - 1]);
 
 	// Return parition index
     return (i + 1);
 }
 
 // Sorts an array with the quick sort algorithm
-void Quicksort_CPU(float* arr, int start, int end)
+void quicksort_cpu(float* arr, int arrSize)
 {
-	// Array size must be positive
-	if (start < end)
+	// Array size must be greater than 1
+	if (arrSize > 1)
 	{
 		// Partition
-        int k = Partition_CPU(arr, start, end);
+        int k = partition_cpu(arr, arrSize);
 
 		// Sort the left partition
-		Quicksort_CPU(arr, start, k - 1);
+		quicksort_cpu(&arr[0], k);
 
 		// Sort the right partition
-		Quicksort_CPU(arr, k + 1, end);
+		quicksort_cpu(&arr[k + 1], arrSize - k - 1);
 	}
 }
 
@@ -74,6 +74,12 @@ int main(int argc, char**argv)
     unsigned int arrSize = (argc > 1)?(atoi(argv[1])):ARRAY_SIZE;
     float* arr_cpu = (float*) malloc(arrSize * sizeof(float));
     float* arr_gpu = (float*) malloc(arrSize * sizeof(float));
+
+    //Global array which will be used by the partition kernel
+    float* arrCopy_gpu = (float*) malloc(arrSize * sizeof(float));
+    float* lessThan_gpu = (float*) malloc(arrSize * sizeof(float));
+    float* greaterThan_gpu = (float*) malloc(arrSize * sizeof(float));
+    float* partition_gpu = (float*) malloc(arrSize * sizeof(float));
     
 	for (unsigned int i = 0; i < arrSize; ++i) 
 	{
@@ -84,27 +90,27 @@ int main(int argc, char**argv)
 
     // Compute on CPU
     startTime(&timer);
-	Quicksort_CPU(arr_cpu, 0, arrSize - 1);
+	quicksort_cpu(arr_cpu, arrSize);
     stopTime(&timer);
     printElapsedTime(timer, "CPU time");
 
     // Compute on GPU
     startTime(&timer);
-	Quicksort_GPU(arr_gpu, arrSize);
+	quicksort_gpu(arr_gpu, arrSize); //arrCopy_gpu, lessThan_gpu, greaterThan_gpu
     stopTime(&timer);
     printElapsedTime(timer, "GPU time");
 
-    //printf("\n");
-    //for (unsigned int i = 0; i < arrSize; ++i) {
-    //    printf("%e ", arr_cpu[i]);
-    //}
-    //printf("\n");
+    printf("\n");
+    for (unsigned int i = 0; i < arrSize; ++i) {
+        printf("%e ", arr_cpu[i]);
+    }
+    printf("\n");
 
-    //printf("\n");
-    //for (unsigned int i = 0; i < arrSize; ++i) {
-    //    printf("%e ", arr_gpu[i]);
-    //}
-    //printf("\n");
+    printf("\n");
+    for (unsigned int i = 0; i < arrSize; ++i) {
+        printf("%e ", arr_gpu[i]);
+    }
+    printf("\n");
 
     // Verify result
     for(unsigned int i = 0; i < arrSize; ++i) 
@@ -120,6 +126,7 @@ int main(int argc, char**argv)
     free(arr_cpu);
     free(arr_gpu);
 
+    //Exit program
     return 0;
 }
 

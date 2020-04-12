@@ -16,7 +16,7 @@
 #endif
 
 // The partition kernel method
-__global__ void Partition_Kernel(float* arr, float* arrCopy, float* lessThan, float* greaterThan, int start, int end, int pivotIdx, int k)
+__global__ void partition_kernel(float* arr, float* arrCopy, float* lessThan, float* greaterThan, int start, int end, int pivotIdx, int k)
 {
 	// Calculate the size of the array
     int arrSize = end - start + 1;
@@ -44,9 +44,9 @@ __global__ void Partition_Kernel(float* arr, float* arrCopy, float* lessThan, fl
     arrCopy[tid] = arr[index];
 
     // Copy to the lessThan array
-    if(arr[index] < pivot) 
+    if(arr[index] < pivot)
         lessThan[tid] = 1;
-    else 
+    else
         lessThan[tid] = 0;
 
     // Copy to the greaterThan array
@@ -62,7 +62,7 @@ __global__ void Partition_Kernel(float* arr, float* arrCopy, float* lessThan, fl
 }
 
 // Swap two elements of an array
-__device__  void Swap_GPU(float* a, float* b)
+__device__ void swap_gpu(float* a, float* b)
 {
 	float temp = *a;
 	*a = *b;
@@ -70,37 +70,37 @@ __device__  void Swap_GPU(float* a, float* b)
 }
 
 // Computes the partition after rearranging the array
-__device__ int Partition_GPU(float* arr, int start, int end)
+__device__ int partition_gpu(float* arr, int arrSize)
 {
-    // Index of smaller element
-	int i = start - 1;
+	// Index of smaller element
+    int i = - 1;
 
-	for (int j = start; j < end; j++)
+	for (int j = 0; j < arrSize - 1; j++)
 	{
 		// If current element is smaller than the pivot
-		if (arr[j] < arr[end])
+		if (arr[j] < arr[arrSize - 1])
 		{
 			// Increment the index of the smaller element
 			i++;
 			// Swap array elements with indices i and j
-			Swap_GPU(&arr[i], &arr[j]);
+			swap_gpu(&arr[i], &arr[j]);
 		}
 	}
 
-	//Swap array elements with indices i + 1 and pivot
-	Swap_GPU(&arr[i + 1], &arr[end]);
+	// Swap array elements with indices i + 1 and pivot
+	swap_gpu(&arr[i + 1], &arr[arrSize - 1]);
 
-	//Return parition index
-	return (i + 1);
+	// Return parition index
+    return (i + 1);
 }
 
 // Naive version of the parallel quicksort which only parallelizes recursive calls
-__global__ void Quicksort_Naive_Kernel(float* arr, int start, int end)
+__global__ void quicksort_naive_kernel(float* arr, int arrSize)
 {
     // Partition
-    int k = Partition_GPU(arr, start, end);
+    int k = partition_gpu(arr, arrSize);
 
-    if(start < k - 1) 
+    if(k > 1) 
 	{
         // Create cuda stream to run recursive calls in parallel
         cudaStream_t s_left;
@@ -109,13 +109,13 @@ __global__ void Quicksort_Naive_Kernel(float* arr, int start, int end)
         cudaStreamCreateWithFlags(&s_left, cudaStreamNonBlocking);
 
         // Sort the left partition
-		Quicksort_Naive_Kernel <<< 1, 1, 0, s_left >>> (arr, start, k - 1);
+		quicksort_naive_kernel <<< 1, 1, 0, s_left >>> (&arr[0], k);
 
         // Destroy the stream after getting done from it
         cudaStreamDestroy(s_left);
     }
 
-    if(k + 1 < end) 
+    if(arrSize > k + 2) 
 	{
         // Create cuda stream to run recursive calls in parallel
         cudaStream_t s_right;
@@ -124,7 +124,7 @@ __global__ void Quicksort_Naive_Kernel(float* arr, int start, int end)
         cudaStreamCreateWithFlags(&s_right, cudaStreamNonBlocking);
 
         // Sort the right partition
-		Quicksort_Naive_Kernel <<< 1, 1, 0, s_right >>> (arr, k + 1, end);
+		quicksort_naive_kernel <<< 1, 1, 0, s_right >>> (&arr[k + 1], arrSize - k - 1);
 
         // Destroy the stream after getting done from it
         cudaStreamDestroy(s_right);
@@ -132,7 +132,7 @@ __global__ void Quicksort_Naive_Kernel(float* arr, int start, int end)
 }
 
 //Advanced version of the parallel quicksort which parallelizes both the partition method and the recursive calls
-__global__ void Quicksort_Advanced_Kernel(float* arr, int start, int end)
+__global__ void quicksort_advanced_kernel(float* arr, int start, int end)
 {
 	// Get size of the array
 	int arrSize = end - start + 1;
@@ -154,22 +154,22 @@ __global__ void Quicksort_Advanced_Kernel(float* arr, int start, int end)
 
 	// Partition
 	int k = 0;
-	Partition_Kernel << < numBlocks, numThreadsPerBlock >> > (arr, arrCopy, lessThan, greaterThan, start, end, pivotIdx, k);
+	partition_kernel << < numBlocks, numThreadsPerBlock >> > (arr, arrCopy, lessThan, greaterThan, start, end, pivotIdx, k);
 
 	// Sort the left partition
 	if (start < k - 1) 
 	{
-		Quicksort_Advanced_Kernel << < 1, 1 >> > (arr, start, k - 1);
+		quicksort_advanced_kernel << < 1, 1 >> > (arr, start, k - 1);
 	}
 
 	// Sort the right partition
 	if (k + 1 < end) 
 	{
-		Quicksort_Advanced_Kernel << < 1, 1 >> > (arr, k + 1, end);
+		quicksort_advanced_kernel << < 1, 1 >> > (arr, k + 1, end);
 	}
 }
 
-void Quicksort_GPU(float* arr, int arrSize)
+__host__ void quicksort_gpu(float* arr, int arrSize)
 {
     //Define the timer
     Timer timer;
@@ -177,9 +177,18 @@ void Quicksort_GPU(float* arr, int arrSize)
     //Allocate GPU memory
     startTime(&timer);
     
-    //Declare and allocate the same array on the device
-    float *arr_d;
+    //Declare and allocate required arrays on the device
+    float* arr_d;
+    float* arrCopy_d;
+    float* lessThan_d;
+    float* greaterThan_d;
+    float* partition_d;
     cudaMalloc((void**) &arr_d, arrSize * sizeof(float));
+    cudaMalloc((void**) &arrCopy_d, arrSize * sizeof(float));
+    cudaMalloc((void**) &lessThan_d, arrSize * sizeof(float));
+    cudaMalloc((void**) &greaterThan_d, arrSize * sizeof(float));
+    cudaMalloc((void**) &partition_d, arrSize * sizeof(float));
+
     cudaDeviceSynchronize();
     stopTime(&timer);
     printElapsedTime(timer, "Allocation time");
@@ -199,7 +208,7 @@ void Quicksort_GPU(float* arr, int arrSize)
     //Sorting on GPU
     if(arrSize > 1) 
 	{
-		Quicksort_Naive_Kernel << < 1, 1, 0 >> > (arr_d, 0, arrSize - 1);
+		quicksort_naive_kernel << < 1, 1, 0 >> > (arr_d, arrSize);
     }
 
     cudaDeviceSynchronize();
@@ -220,6 +229,11 @@ void Quicksort_GPU(float* arr, int arrSize)
     
     //Now that we are done, we can free the allocated memory to leave space for other computations
     cudaFree(arr_d);
+    cudaFree(arrCopy_d);
+    cudaFree(lessThan_d);
+    cudaFree(greaterThan_d);
+    cudaFree(partition_d);
+
     cudaDeviceSynchronize();
     stopTime(&timer);
     printElapsedTime(timer, "Deallocation time");
