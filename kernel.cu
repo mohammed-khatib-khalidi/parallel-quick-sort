@@ -19,14 +19,29 @@
 
 // The partition kernel method
 // The array size should be usually double the number of threads since each thread will be responsible for two array elements
-__global__ void partition_kernel(float* arr, float* arrCopy, float* lessThan, float* greaterThan, int* partArr, int arrSize)
+__global__ void partition_kernel(float* arr, float* arrCopy, float* lessThan, float* greaterThan, int* partitionArr, int* blockCounter, int arrSize)
 {
-    // Shared memory buffer
+    // Shared memory
+    __shared__ int bid_s;
+    __shared__ float previousSum_s;
     __shared__ float lessThan_s[2 * BLOCK_DIM];
     __shared__ float greaterThan_s[2 * BLOCK_DIM];
 
+    //If this was the leader thread
+    if (threadIdx.x == 0)
+    {
+        //Get current block index and increment by 1
+        bid_s = atomicAdd(&blockCounter[0], 1);
+    }
+
+    // Synchronize all threads
+    __syncthreads();
+
+    //Get the dynamic block id
+    const int bid = bid_s;    
+
     // Load the real thread position
-    int i = (2 * blockDim.x * blockIdx.x) + threadIdx.x;
+    int i = (2 * blockDim.x * bid) + threadIdx.x;
 
 	// In case the array was only one item then return the start index
 	if (arrSize == 1) 
@@ -34,7 +49,7 @@ __global__ void partition_kernel(float* arr, float* arrCopy, float* lessThan, fl
         // Allow only the first thread to modify partition k
         if (threadIdx.x == 0)
         {
-            partArr[i] = 0;
+            partitionArr[i] = 0;
         }
         // Stop here
         return;
@@ -128,8 +143,22 @@ __global__ void partition_kernel(float* arr, float* arrCopy, float* lessThan, fl
         }
     }
 
+    // ========================= Commit changes to global memory =========================
+
     // Synchronize all threads
     __syncthreads();
+
+    if (i < arrSize)
+    {
+        lessThan[i] = lessThan_s[threadIdx.x];
+        greaterThan[i] = greaterThan_s[threadIdx.x];
+    }
+
+    if (i + blockDim.x < arrSize)
+    {
+        lessThan[i + blockDim.x] = lessThan_s[threadIdx.x + blockDim.x];
+        greaterThan[i + blockDim.x] = greaterThan_s[threadIdx.x + blockDim.x];
+    }
 }
 
 // Swap two elements of an array
@@ -203,7 +232,7 @@ __global__ void quicksort_naive_kernel(float* arr, int arrSize)
 }
 
 //Advanced version of the parallel quicksort which parallelizes both the partition method and the recursive calls
-__global__ void quicksort_advanced_kernel(float* arr, float* arrCopy, float* lessThan, float* greaterThan, int* partArr, int arrSize)
+__global__ void quicksort_advanced_kernel(float* arr, float* arrCopy, float* lessThan, float* greaterThan, int* partitionArr, int* blockCounter, int arrSize)
 {  
     // Configure the number of blocks and threads per block
     const unsigned int numThreadsPerBlock = BLOCK_DIM;
@@ -211,12 +240,12 @@ __global__ void quicksort_advanced_kernel(float* arr, float* arrCopy, float* les
     const unsigned int numBlocks = (arrSize + numElementsPerBlock - 1)/numElementsPerBlock;
 
 	// Partition
-    partition_kernel <<< numBlocks, numThreadsPerBlock >>> (arr, arrCopy, lessThan, greaterThan, partArr, arrSize);
+    partition_kernel <<< numBlocks, numThreadsPerBlock >>> (arr, arrCopy, lessThan, greaterThan, partitionArr, blockCounter, arrSize);
 
     // Set partition as first element of the array after the partition kernel has done its work
-    int k = partArr[0];
+    int k = partitionArr[0];
 
-    if(k > 1) 
+    if(k > 1)
 	{
         // Create cuda stream to run recursive calls in parallel
         cudaStream_t s_left;
@@ -225,7 +254,7 @@ __global__ void quicksort_advanced_kernel(float* arr, float* arrCopy, float* les
         cudaStreamCreateWithFlags(&s_left, cudaStreamNonBlocking);
 
         // Sort the left partition
-		quicksort_advanced_kernel <<< 1, 1, 0, s_left >>> (&arr[0], &arrCopy[0], &lessThan[0], &greaterThan[0], &partArr[0], k);
+		quicksort_advanced_kernel <<< 1, 1, 0, s_left >>> (&arr[0], &arrCopy[0], &lessThan[0], &greaterThan[0], &partitionArr[0], &blockCounter[0], k);
 
         // Destroy the stream after getting done from it
         cudaStreamDestroy(s_left);
@@ -240,7 +269,7 @@ __global__ void quicksort_advanced_kernel(float* arr, float* arrCopy, float* les
         cudaStreamCreateWithFlags(&s_right, cudaStreamNonBlocking);
 
         // Sort the right partition
-		quicksort_advanced_kernel <<< 1, 1, 0, s_right >>> (&arr[k + 1], &arrCopy[k + 1], &lessThan[k + 1], &greaterThan[k + 1], &partArr[k + 1], arrSize - k - 1);
+		quicksort_advanced_kernel <<< 1, 1, 0, s_right >>> (&arr[k + 1], &arrCopy[k + 1], &lessThan[k + 1], &greaterThan[k + 1], &partitionArr[k + 1], &blockCounter[k + 1], arrSize - k - 1);
 
         // Destroy the stream after getting done from it
         cudaStreamDestroy(s_right);
@@ -257,15 +286,26 @@ __host__ void quicksort_gpu(float* arr, int arrSize)
     
     //Declare and allocate required arrays on the device
     float* arr_d;
-    float* arrCopy_d;
-    float* lessThan_d;
-    float* greaterThan_d;
-    int* partArr_d;
+    float* arrCopy;
+    float* lessThan;
+    float* greaterThan;
+    float* partialSums;
+    int* partitionArr;
+    int* blockCounter;
+
     cudaMalloc((void**) &arr_d, arrSize * sizeof(float));
-    cudaMalloc((void**) &arrCopy_d, arrSize * sizeof(float));
-    cudaMalloc((void**) &lessThan_d, arrSize * sizeof(float));
-    cudaMalloc((void**) &greaterThan_d, arrSize * sizeof(float));
-    cudaMalloc((void**) &partArr_d, arrSize * sizeof(int));
+    cudaMalloc((void**) &arrCopy, arrSize * sizeof(float));
+    cudaMalloc((void**) &lessThan, arrSize * sizeof(float));
+    cudaMalloc((void**) &greaterThan, arrSize * sizeof(float));
+    cudaMalloc((void**) &partialSums, arrSize * sizeof(float));
+    cudaMalloc((void**) &partitionArr, arrSize * sizeof(int));
+    cudaMalloc((void**) &blockCounter, arrSize * sizeof(int));
+
+    //Initialize all block counters to 0
+    for (unsigned int i = 0; i < arrSize; i++)
+    {
+        blockCounter[i] = 0;
+    }
 
     cudaDeviceSynchronize();
     stopTime(&timer);
@@ -286,7 +326,7 @@ __host__ void quicksort_gpu(float* arr, int arrSize)
     //Sorting on GPU
     if(arrSize > 1) 
 	{
-        //quicksort_advanced_kernel << < 1, 1, 0 >> > (arr_d, arrCopy_d, lessThan_d, greaterThan_d, partArr_d, arrSize);
+        //quicksort_advanced_kernel << < 1, 1, 0 >> > (arr_d, arrCopy, lessThan, greaterThan, partitionArr, arrSize);
         quicksort_naive_kernel << < 1, 1, 0 >> > (arr_d, arrSize);
     }
 
@@ -308,10 +348,11 @@ __host__ void quicksort_gpu(float* arr, int arrSize)
     
     //Now that we are done, we can free the allocated memory to leave space for other computations
     cudaFree(arr_d);
-    cudaFree(arrCopy_d);
-    cudaFree(lessThan_d);
-    cudaFree(greaterThan_d);
-    cudaFree(partition_d);
+    cudaFree(arrCopy);
+    cudaFree(lessThan);
+    cudaFree(greaterThan);
+    cudaFree(partialSums);
+    cudaFree(partitionArr);
 
     cudaDeviceSynchronize();
     stopTime(&timer);
