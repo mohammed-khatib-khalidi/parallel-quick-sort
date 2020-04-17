@@ -17,6 +17,109 @@
 
 #define BLOCK_DIM 1024
 
+
+// Swap two elements of an array
+__device__ void swap_gpu(int* a, int* b)
+{
+	int temp = *a;
+	*a = *b;
+	*b = temp;
+}
+
+// A sequential version of the selection sort
+// This algorithm will be applied after reaching the maximum recursion depth on gpu
+__device__ void selectionSort(int* arr, int arrSize) 
+{ 
+    int i, j, min_idx; 
+  
+    // One by one move boundary of unsorted subarray 
+    for (i = 0; i < arrSize - 1; i++) 
+    { 
+        // Find the minimum element in unsorted array 
+        min_idx = i; 
+        for (j = i+1; j < arrSize; j++)
+        {
+            if (arr[j] < arr[min_idx])
+            {
+                min_idx = j;
+            }
+        }
+  
+        // Swap the found minimum element with the first element 
+        swap_gpu(&arr[min_idx], &arr[i]); 
+    } 
+}
+
+// Computes the partition after rearranging the array
+__device__ int partition_gpu(int* arr, int arrSize)
+{
+	// Index of smaller element
+    int i = - 1;
+
+	for (int j = 0; j < arrSize - 1; j++)
+	{
+		// If current element is smaller than the pivot
+		if (arr[j] < arr[arrSize - 1])
+		{
+			// Increment the index of the smaller element
+			i++;
+			// Swap array elements with indices i and j
+			swap_gpu(&arr[i], &arr[j]);
+		}
+	}
+
+	// Swap array elements with indices i + 1 and pivot
+	swap_gpu(&arr[i + 1], &arr[arrSize - 1]);
+
+	// Return partition index
+    return (i + 1);
+}
+
+// Naive version of the parallel quicksort which only parallelizes recursive calls
+__global__ void quicksort_naive_kernel(int* arr, int arrSize, int depth)
+{
+    // If depth is more than maximum recursion
+    // Apply sequential selection sort
+    if(depth > MAX_RECURSION)
+    {
+        selectionSort(arr, arrSize);
+        return;
+    }
+
+    // Partition
+    int k = partition_gpu(arr, arrSize);
+
+    if(k > 1) 
+	{
+        // Create cuda stream to run recursive calls in parallel
+        cudaStream_t s_left;
+
+        // Set the non-blocking flag for the cuda stream
+        cudaStreamCreateWithFlags(&s_left, cudaStreamNonBlocking);
+
+        // Sort the left partition
+		quicksort_naive_kernel <<< 1, 1, 0, s_left >>> (&arr[0], k, depth + 1);
+
+        // Destroy the stream after getting done from it
+        cudaStreamDestroy(s_left);
+    }
+
+    if(arrSize > k + 2) 
+	{
+        // Create cuda stream to run recursive calls in parallel
+        cudaStream_t s_right;
+
+        // Set the non-blocking flag for the cuda stream
+        cudaStreamCreateWithFlags(&s_right, cudaStreamNonBlocking);
+
+        // Sort the right partition
+		quicksort_naive_kernel <<< 1, 1, 0, s_right >>> (&arr[k + 1], arrSize - k - 1, depth + 1);
+
+        // Destroy the stream after getting done from it
+        cudaStreamDestroy(s_right);
+    }
+}
+
 // The partition kernel method
 // The array size should be usually double the number of threads since each thread will be responsible for two array elements
 __global__ void partition_kernel (
@@ -207,76 +310,6 @@ __global__ void partition_kernel (
     }
 }
 
-// Swap two elements of an array
-__device__ void swap_gpu(int* a, int* b)
-{
-	int temp = *a;
-	*a = *b;
-	*b = temp;
-}
-
-// Computes the partition after rearranging the array
-__device__ int partition_gpu(int* arr, int arrSize)
-{
-	// Index of smaller element
-    int i = - 1;
-
-	for (int j = 0; j < arrSize - 1; j++)
-	{
-		// If current element is smaller than the pivot
-		if (arr[j] < arr[arrSize - 1])
-		{
-			// Increment the index of the smaller element
-			i++;
-			// Swap array elements with indices i and j
-			swap_gpu(&arr[i], &arr[j]);
-		}
-	}
-
-	// Swap array elements with indices i + 1 and pivot
-	swap_gpu(&arr[i + 1], &arr[arrSize - 1]);
-
-	// Return partition index
-    return (i + 1);
-}
-
-// Naive version of the parallel quicksort which only parallelizes recursive calls
-__global__ void quicksort_naive_kernel(int* arr, int arrSize)
-{
-    // Partition
-    int k = partition_gpu(arr, arrSize);
-
-    if(k > 1) 
-	{
-        // Create cuda stream to run recursive calls in parallel
-        cudaStream_t s_left;
-
-        // Set the non-blocking flag for the cuda stream
-        cudaStreamCreateWithFlags(&s_left, cudaStreamNonBlocking);
-
-        // Sort the left partition
-		quicksort_naive_kernel <<< 1, 1, 0, s_left >>> (&arr[0], k);
-
-        // Destroy the stream after getting done from it
-        cudaStreamDestroy(s_left);
-    }
-
-    if(arrSize > k + 2) 
-	{
-        // Create cuda stream to run recursive calls in parallel
-        cudaStream_t s_right;
-
-        // Set the non-blocking flag for the cuda stream
-        cudaStreamCreateWithFlags(&s_right, cudaStreamNonBlocking);
-
-        // Sort the right partition
-		quicksort_naive_kernel <<< 1, 1, 0, s_right >>> (&arr[k + 1], arrSize - k - 1);
-
-        // Destroy the stream after getting done from it
-        cudaStreamDestroy(s_right);
-    }
-}
-
 //Advanced version of the parallel quicksort which parallelizes both the partition method and the recursive calls
 __global__ void quicksort_advanced_kernel(
     int* arr,
@@ -291,11 +324,11 @@ __global__ void quicksort_advanced_kernel(
     int depth,
     int arrSize)
 {
-    // If depth is greater than 24.
-    if(depth > 24)
+    // If depth is more than maximum recursion
+    // Apply sequential selection sort
+    if(depth > MAX_RECURSION)
     {
-        // Sort the remaining array chunk sequentially
-        // Maybe use an efficient algorithm like quick, merge or selection sort
+        selectionSort(arr, arrSize);
         return;
     }
 
@@ -419,8 +452,8 @@ __host__ void quicksort_gpu(int* arr, int arrSize)
     //Sorting on GPU
     if(arrSize > 1) 
 	{
-        //quicksort_advanced_kernel << < 1, 1, 0 >> > (arr_d, arrCopy, lessThan, greaterThan, partitionArr, lessThanSums, greaterThanSums, blockCounter, flags, 0, arrSize);
-        quicksort_naive_kernel << < 1, 1, 0 >> > (arr_d, arrSize);
+        //quicksort_advanced_kernel << < 1, 1, 0 >> > (arr_d, arrCopy, lessThan, greaterThan, partitionArr, lessThanSums, greaterThanSums, blockCounter, flags, 1, arrSize);
+        quicksort_naive_kernel << < 1, 1, 0 >> > (arr_d, arrSize, 1);
     }
 
     cudaDeviceSynchronize();

@@ -96,21 +96,21 @@ int main(int argc, char**argv)
 
     // Compute on GPU
     startTime(&timer);
-	quicksort_gpu(arr_gpu, arrSize); //arrCopy_gpu, lessThan_gpu, greaterThan_gpu
+	quicksort_gpu(arr_gpu, arrSize);
     stopTime(&timer);
     printElapsedTime(timer, "GPU time");
 
-    printf("\n");
-    for (unsigned int i = 0; i < arrSize; ++i) {
-        printf("%d ", arr_cpu[i]);
-    }
-    printf("\n");
+    //printf("\n");
+    //for (unsigned int i = 0; i < arrSize; ++i) {
+    //    printf("%d ", arr_cpu[i]);
+    //}
+    //printf("\n");
 
-    printf("\n");
-    for (unsigned int i = 0; i < arrSize; ++i) {
-        printf("%d ", arr_gpu[i]);
-    }
-    printf("\n");
+    //printf("\n");
+    //for (unsigned int i = 0; i < arrSize; ++i) {
+    //    printf("%d ", arr_gpu[i]);
+    //}
+    //printf("\n");
 
     // Verify result
     for(unsigned int i = 0; i < arrSize; ++i) 
