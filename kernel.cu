@@ -75,6 +75,25 @@ __device__ int partition_gpu(int* arr, int arrSize)
     return (i + 1);
 }
 
+// Sequential version of the quicksort only applied for arrays of specific size threshold
+__device__ void quicksort_sequential(int* arr, int arrSize)
+{
+    // Partition
+    int k = partition_gpu(arr, arrSize);
+
+    if(k > 1)
+    {
+        // Sort the left partition
+        quicksort_sequential(&arr[0], k);
+    }
+    
+    if(arrSize > k + 2)
+    {
+        // Sort the right partition
+        quicksort_sequential(&arr[k + 1], arrSize - k - 1);
+    }
+}
+
 // Naive version of the parallel quicksort which only parallelizes recursive calls
 __global__ void quicksort_naive_kernel(int* arr, int arrSize, int depth)
 {
@@ -86,37 +105,45 @@ __global__ void quicksort_naive_kernel(int* arr, int arrSize, int depth)
         return;
     }
 
-    // Partition
-    int k = partition_gpu(arr, arrSize);
-
-    if(k > 1) 
-	{
-        // Create cuda stream to run recursive calls in parallel
-        cudaStream_t s_left;
-
-        // Set the non-blocking flag for the cuda stream
-        cudaStreamCreateWithFlags(&s_left, cudaStreamNonBlocking);
-
-        // Sort the left partition
-		quicksort_naive_kernel <<< 1, 1, 0, s_left >>> (&arr[0], k, depth + 1);
-
-        // Destroy the stream after getting done from it
-        cudaStreamDestroy(s_left);
+    // If array size is small than a certain threshold, sort sequentially
+    if(arrSize < ARRAY_THRESHOLD)
+    {
+        quicksort_sequential(arr, arrSize);
     }
+    else
+    {
+        // Partition
+        int k = partition_gpu(arr, arrSize);
 
-    if(arrSize > k + 2) 
-	{
-        // Create cuda stream to run recursive calls in parallel
-        cudaStream_t s_right;
-
-        // Set the non-blocking flag for the cuda stream
-        cudaStreamCreateWithFlags(&s_right, cudaStreamNonBlocking);
-
-        // Sort the right partition
-		quicksort_naive_kernel <<< 1, 1, 0, s_right >>> (&arr[k + 1], arrSize - k - 1, depth + 1);
-
-        // Destroy the stream after getting done from it
-        cudaStreamDestroy(s_right);
+        if(k > 1) 
+        {
+            // Create cuda stream to run recursive calls in parallel
+            cudaStream_t s_left;
+    
+            // Set the non-blocking flag for the cuda stream
+            cudaStreamCreateWithFlags(&s_left, cudaStreamNonBlocking);
+    
+            // Sort the left partition
+            quicksort_naive_kernel <<< 1, 1, 0, s_left >>> (&arr[0], k, depth + 1);
+    
+            // Destroy the stream after getting done from it
+            cudaStreamDestroy(s_left);
+        }
+    
+        if(arrSize > k + 2) 
+        {
+            // Create cuda stream to run recursive calls in parallel
+            cudaStream_t s_right;
+    
+            // Set the non-blocking flag for the cuda stream
+            cudaStreamCreateWithFlags(&s_right, cudaStreamNonBlocking);
+    
+            // Sort the right partition
+            quicksort_naive_kernel <<< 1, 1, 0, s_right >>> (&arr[k + 1], arrSize - k - 1, depth + 1);
+    
+            // Destroy the stream after getting done from it
+            cudaStreamDestroy(s_right);
+        }
     }
 }
 
