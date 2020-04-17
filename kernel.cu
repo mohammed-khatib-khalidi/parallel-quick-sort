@@ -20,12 +20,12 @@
 // The partition kernel method
 // The array size should be usually double the number of threads since each thread will be responsible for two array elements
 __global__ void partition_kernel (
-    float* arr,
-    float* arrCopy,
-    float* lessThan,
-    float* greaterThan,
-    float* lessThanSums,
-    float* greaterThanSums,
+    int* arr,
+    int* arrCopy,
+    int* lessThan,
+    int* greaterThan,
+    int* lessThanSums,
+    int* greaterThanSums,
     int* partitionArr,
     int* blockCounter,
     int* flags,
@@ -33,12 +33,12 @@ __global__ void partition_kernel (
 {
     // Shared memory
     __shared__ int bid_s;
-    __shared__ float lsPrevSum_s;
-    __shared__ float gtPrevSum_s;
-    __shared__ float lsLocalSum_s;
-    __shared__ float gtLocalSum_s;
-    __shared__ float lessThan_s[2 * BLOCK_DIM];
-    __shared__ float greaterThan_s[2 * BLOCK_DIM];
+    __shared__ int lsPrevSum_s;
+    __shared__ int gtPrevSum_s;
+    __shared__ int lsLocalSum_s;
+    __shared__ int gtLocalSum_s;
+    __shared__ int lessThan_s[2 * BLOCK_DIM];
+    __shared__ int greaterThan_s[2 * BLOCK_DIM];
 
     // If this was the first thread
     if (threadIdx.x == 0)
@@ -59,7 +59,7 @@ __global__ void partition_kernel (
     // ========================= Copy to temporary, lessThan and greaterThan arrays =========================
 
     // Choose the middle element as the pivot
-    float pivot = arr[(arrSize - 1) / 2];
+    int pivot = arr[(arrSize - 1) / 2];
 
     // Handle first element by the thread
     if(i < arrSize)
@@ -152,8 +152,8 @@ __global__ void partition_kernel (
     // If this was the last thread
     if (threadIdx.x == blockDim.x - 1)
     {
-        lsLocalSum_s = lessThan_s[2 * BLOCK_DIM – 1];
-        gtLocalSum_s = greaterThan_s[2 * BLOCK_DIM – 1];
+        lsLocalSum_s = lessThan_s[2 * BLOCK_DIM - 1];
+        gtLocalSum_s = greaterThan_s[2 * BLOCK_DIM - 1];
     }
 
     // ========================= Single pass scan =========================
@@ -208,15 +208,15 @@ __global__ void partition_kernel (
 }
 
 // Swap two elements of an array
-__device__ void swap_gpu(float* a, float* b)
+__device__ void swap_gpu(int* a, int* b)
 {
-	float temp = *a;
+	int temp = *a;
 	*a = *b;
 	*b = temp;
 }
 
 // Computes the partition after rearranging the array
-__device__ int partition_gpu(float* arr, int arrSize)
+__device__ int partition_gpu(int* arr, int arrSize)
 {
 	// Index of smaller element
     int i = - 1;
@@ -241,7 +241,7 @@ __device__ int partition_gpu(float* arr, int arrSize)
 }
 
 // Naive version of the parallel quicksort which only parallelizes recursive calls
-__global__ void quicksort_naive_kernel(float* arr, int arrSize)
+__global__ void quicksort_naive_kernel(int* arr, int arrSize)
 {
     // Partition
     int k = partition_gpu(arr, arrSize);
@@ -279,12 +279,12 @@ __global__ void quicksort_naive_kernel(float* arr, int arrSize)
 
 //Advanced version of the parallel quicksort which parallelizes both the partition method and the recursive calls
 __global__ void quicksort_advanced_kernel(
-    float* arr,
-    float* arrCopy,
-    float* lessThan,
-    float* greaterThan,
-    float* lessThanSums,
-    float* greaterThanSums,
+    int* arr,
+    int* arrCopy,
+    int* lessThan,
+    int* greaterThan,
+    int* lessThanSums,
+    int* greaterThanSums,
     int* partitionArr,
     int* blockCounter,
     int* flags,
@@ -304,11 +304,14 @@ __global__ void quicksort_advanced_kernel(
     const unsigned int numElementsPerBlock = 2 * numThreadsPerBlock;
     const unsigned int numBlocks = (arrSize + numElementsPerBlock - 1)/numElementsPerBlock;
 
-	// Partition
-    partition_kernel <<< numBlocks, numThreadsPerBlock >>> (arr, arrCopy, lessThan, greaterThan, lessThanSums, greaterThanSums, partitionArr, blockCounter, flags, arrSize);
+	//// Partition
+ //   partition_kernel <<< numBlocks, numThreadsPerBlock >>> (arr, arrCopy, lessThan, greaterThan, lessThanSums, greaterThanSums, partitionArr, blockCounter, flags, arrSize);
 
-    // Set partition as first element of the array after the partition kernel has done its work
-    int k = partitionArr[0];
+ //   // Set partition as first element of the array after the partition kernel has done its work
+ //   int k = partitionArr[0];
+
+	// For testing I added this, just to make sure the code is running
+	int k = partition_gpu(arr, arrSize);
 
     if(k > 1)
 	{
@@ -365,7 +368,7 @@ __global__ void quicksort_advanced_kernel(
     }
 }
 
-__host__ void quicksort_gpu(float* arr, int arrSize)
+__host__ void quicksort_gpu(int* arr, int arrSize)
 {
     //Define the timer
     Timer timer;
@@ -374,22 +377,22 @@ __host__ void quicksort_gpu(float* arr, int arrSize)
     startTime(&timer);
     
     //Declare and allocate required arrays on the device
-    float* arr_d;
-    float* arrCopy;
-    float* lessThan;
-    float* greaterThan;
-    float* lessThanSums;
-    float* greaterThanSums;
+    int* arr_d;
+    int* arrCopy;
+    int* lessThan;
+    int* greaterThan;
+    int* lessThanSums;
+    int* greaterThanSums;
     int* partitionArr;
     int* blockCounter;
     int* flags;
 
-    cudaMalloc((void**) &arr_d, arrSize * sizeof(float));
-    cudaMalloc((void**) &arrCopy, arrSize * sizeof(float));
-    cudaMalloc((void**) &lessThan, arrSize * sizeof(float));
-    cudaMalloc((void**) &greaterThan, arrSize * sizeof(float));
-    cudaMalloc((void**) &lessThanSums, arrSize * sizeof(float));
-    cudaMalloc((void**) &greaterThanSums, arrSize * sizeof(float));
+    cudaMalloc((void**) &arr_d, arrSize * sizeof(int));
+    cudaMalloc((void**) &arrCopy, arrSize * sizeof(int));
+    cudaMalloc((void**) &lessThan, arrSize * sizeof(int));
+    cudaMalloc((void**) &greaterThan, arrSize * sizeof(int));
+    cudaMalloc((void**) &lessThanSums, arrSize * sizeof(int));
+    cudaMalloc((void**) &greaterThanSums, arrSize * sizeof(int));
     cudaMalloc((void**) &partitionArr, arrSize * sizeof(int));
     cudaMalloc((void**) &blockCounter, arrSize * sizeof(int));
     cudaMalloc((void**) &flags, arrSize * sizeof(int));
@@ -408,7 +411,7 @@ __host__ void quicksort_gpu(float* arr, int arrSize)
     startTime(&timer);
     
     //Copy data for the array from host to device
-    cudaMemcpy(arr_d, arr, arrSize * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(arr_d, arr, arrSize * sizeof(int), cudaMemcpyHostToDevice);
     cudaDeviceSynchronize();
     stopTime(&timer);
     printElapsedTime(timer, "Copy to GPU time");
@@ -419,8 +422,8 @@ __host__ void quicksort_gpu(float* arr, int arrSize)
     //Sorting on GPU
     if(arrSize > 1) 
 	{
-        quicksort_advanced_kernel << < 1, 1, 0 >> > (arr_d, arrCopy, lessThan, greaterThan, partitionArr, lessThanSums, greaterThanSums, blockCounter, flags, 0, arrSize);
-        //quicksort_naive_kernel << < 1, 1, 0 >> > (arr_d, arrSize);
+        //quicksort_advanced_kernel << < 1, 1, 0 >> > (arr_d, arrCopy, lessThan, greaterThan, lessThanSums, greaterThanSums, partitionArr, blockCounter, flags, 0, arrSize);
+        quicksort_naive_kernel << < 1, 1, 0 >> > (arr_d, arrSize);
     }
 
     cudaDeviceSynchronize();
@@ -431,7 +434,7 @@ __host__ void quicksort_gpu(float* arr, int arrSize)
     startTime(&timer);
     
     //After performing the quick sort, copy the sorted array from device to host
-    cudaMemcpy(arr, arr_d, arrSize * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(arr, arr_d, arrSize * sizeof(int), cudaMemcpyDeviceToHost);
     cudaDeviceSynchronize();
     stopTime(&timer);
     printElapsedTime(timer, "Copy from GPU time");

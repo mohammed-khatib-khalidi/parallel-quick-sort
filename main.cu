@@ -16,15 +16,15 @@
 #endif
 
 // Swap two elements of an array
-void swap_cpu(float* a, float* b)
+void swap_cpu(int* a, int* b)
 {
-	float temp = *a;
+	int temp = *a;
 	*a = *b;
 	*b = temp;
 }
 
 // Computes the partition after rearranging the array
-int partition_cpu(float* arr, int arrSize)
+int partition_cpu(int* arr, int arrSize)
 {
 	// Index of smaller element
     int i = - 1;
@@ -49,7 +49,7 @@ int partition_cpu(float* arr, int arrSize)
 }
 
 // Sorts an array with the quick sort algorithm
-void quicksort_cpu(float* arr, int arrSize)
+void quicksort_cpu(int* arr, int arrSize)
 {
 	// Array size must be greater than 1
 	if (arrSize > 1)
@@ -71,19 +71,22 @@ int main(int argc, char**argv)
 
     // Allocate memory and initialize data
     Timer timer;
-    unsigned int arrSize = (argc > 1)?(atoi(argv[1])):ARRAY_SIZE;
-    float* arr_cpu = (float*) malloc(arrSize * sizeof(float));
-    float* arr_gpu = (float*) malloc(arrSize * sizeof(float));
+    unsigned int arrSize = (argc > 1) ? (atoi(argv[1])) : ARRAY_SIZE;
+    int* arr_cpu = (int*) malloc(arrSize * sizeof(int));
+    int* arr_gpu = (int*) malloc(arrSize * sizeof(int));
 
     //Global array which will be used by the partition kernel
-    float* arrCopy_gpu = (float*) malloc(arrSize * sizeof(float));
-    float* lessThan_gpu = (float*) malloc(arrSize * sizeof(float));
-    float* greaterThan_gpu = (float*) malloc(arrSize * sizeof(float));
-    float* partition_gpu = (float*) malloc(arrSize * sizeof(float));
+    int* arrCopy_gpu = (int*) malloc(arrSize * sizeof(int));
+    int* lessThan_gpu = (int*) malloc(arrSize * sizeof(int));
+    int* greaterThan_gpu = (int*) malloc(arrSize * sizeof(int));
+    int* partition_gpu = (int*) malloc(arrSize * sizeof(int));
     
 	for (unsigned int i = 0; i < arrSize; ++i) 
 	{
-        float val = rand();
+        int val = rand() % RANDOM_SIZE + 1;
+
+		printf("%d - ", val);
+
         arr_cpu[i] = val;
         arr_gpu[i] = val;
     }
@@ -102,13 +105,13 @@ int main(int argc, char**argv)
 
     printf("\n");
     for (unsigned int i = 0; i < arrSize; ++i) {
-        printf("%e ", arr_cpu[i]);
+        printf("%d ", arr_cpu[i]);
     }
     printf("\n");
 
     printf("\n");
     for (unsigned int i = 0; i < arrSize; ++i) {
-        printf("%e ", arr_gpu[i]);
+        printf("%d ", arr_gpu[i]);
     }
     printf("\n");
 
@@ -117,7 +120,7 @@ int main(int argc, char**argv)
 	{
         if(arr_cpu[i] != arr_gpu[i])
         {
-            printf("Mismatch at index %u (CPU result = %e, GPU result = %e)\n", i, arr_cpu[i], arr_gpu[i]);
+            printf("Mismatch at index %u (CPU result = %d, GPU result = %d)\n", i, arr_cpu[i], arr_gpu[i]);
             exit(0);
         }
     }
