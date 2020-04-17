@@ -83,10 +83,7 @@ int main(int argc, char**argv)
     
 	for (unsigned int i = 0; i < arrSize; ++i) 
 	{
-        int val = rand() % RANDOM_SIZE + 1;
-
-		printf("%d - ", val);
-
+        int val = rand();
         arr_cpu[i] = val;
         arr_gpu[i] = val;
     }
