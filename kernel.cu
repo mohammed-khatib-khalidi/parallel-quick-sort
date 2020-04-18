@@ -15,9 +15,6 @@
 #include "device_launch_parameters.h"
 #endif
 
-#define BLOCK_DIM 1024
-
-
 // Swap two elements of an array
 __device__ void swap_gpu(int* a, int* b)
 {
@@ -163,12 +160,15 @@ __global__ void partition_kernel (
 {
     // Shared memory
     __shared__ int bid_s;
-    __shared__ int lsPrevSum_s;
+    __shared__ int ltPrevSum_s;
     __shared__ int gtPrevSum_s;
-    __shared__ int lsLocalSum_s;
+    __shared__ int ltLocalSum_s;
     __shared__ int gtLocalSum_s;
+    __shared__ int arrCopy_s[2 * BLOCK_DIM];
     __shared__ int lessThan_s[2 * BLOCK_DIM];
     __shared__ int greaterThan_s[2 * BLOCK_DIM];
+    __shared__ int lessThanPrefixSum_s[2 * BLOCK_DIM];
+    __shared__ int greaterThanPrefixSum_s[2 * BLOCK_DIM];
 
     // If this was the first thread
     if (threadIdx.x == 0)
@@ -195,56 +195,66 @@ __global__ void partition_kernel (
     if(i < arrSize)
     {
         // Copy to temporary array
-        arrCopy[i] = arr[i];
+        arrCopy_s[threadIdx.x] = arr[i];
 
         // Copy to the lessThan array
-        if(arr[i] < pivot)
+        if(arrCopy_s[threadIdx.x] < pivot)
         {
-            lessThan_s[i] = 1;
+            lessThan_s[threadIdx.x] = 1;
+            lessThanPrefixSum_s[threadIdx.x] = 1;
         }
         else
         {
-            lessThan_s[i] = 0;
+            lessThan_s[threadIdx.x] = 0;
+            lessThanPrefixSum_s[threadIdx.x] = 0;
         }
 
         // Copy to the greaterThan array
-        if(arr[i] > pivot)
+        if(arrCopy_s[threadIdx.x] > pivot)
         {
-            greaterThan_s[i] = 1;
+            greaterThan_s[threadIdx.x] = 1;
+            greaterThanPrefixSum_s[threadIdx.x] = 1;
         }
         else
         {
-            greaterThan_s[i] = 0;
+            greaterThan_s[threadIdx.x] = 0;
+            greaterThanPrefixSum_s[threadIdx.x] = 0;
         }
     }
 
     // Handle second element by the thread
     if(i + blockDim.x < arrSize)
     {
-        arrCopy[i + blockDim.x] = arr[i + blockDim.x];
+        arrCopy_s[threadIdx.x + blockDim.x] = arr[i + blockDim.x];
 
         // Copy to the lessThan array
-        if(arr[i + blockDim.x] < pivot)
+        if(arrCopy_s[threadIdx.x + blockDim.x] < pivot)
         {
-            lessThan_s[i + blockDim.x] = 1;
+            lessThan_s[threadIdx.x + blockDim.x] = 1;
+            lessThanPrefixSum_s[threadIdx.x + blockDim.x] = 1;
         }
         else
         {
-            lessThan_s[i + blockDim.x] = 0;
+            lessThan_s[threadIdx.x + blockDim.x] = 0;
+            lessThanPrefixSum_s[threadIdx.x + blockDim.x] = 0;
         }
 
         // Copy to the greaterThan array
-        if(arr[i + blockDim.x] > pivot)
+        if(arrCopy_s[threadIdx.x + blockDim.x] > pivot)
         {
-            greaterThan_s[i + blockDim.x] = 1;
+            greaterThan_s[threadIdx.x + blockDim.x] = 1;
+            greaterThanPrefixSum_s[threadIdx.x + blockDim.x] = 1;
         }
         else
         {
-            greaterThan_s[i + blockDim.x] = 0;
+            greaterThan_s[threadIdx.x + blockDim.x] = 0;
+            greaterThanPrefixSum_s[threadIdx.x + blockDim.x] = 0;
         }
     }
 
-    // ========================= Prefix sum (lessThan & greaterThan) =========================
+    // *************************************************************************************
+    // ************************* Prefix sum (Brent Kung Inclusive) *************************
+    // *************************************************************************************
 
     // ========================= Reduction phase =========================
 
@@ -254,8 +264,8 @@ __global__ void partition_kernel (
         // Re-index threads to minimize divergence
         int index = (threadIdx.x + 1) * 2 * stride - 1;
         if(index >= stride && index < 2 * blockDim.x) {
-            lessThan_s[index] += lessThan_s[index - stride];
-            greaterThan_s[index] += greaterThan_s[index - stride];
+            lessThanPrefixSum_s[index] += lessThanPrefixSum_s[index - stride];
+            greaterThanPrefixSum_s[index] += greaterThanPrefixSum_s[index - stride];
         }
     }
 
@@ -269,8 +279,8 @@ __global__ void partition_kernel (
         int index = (threadIdx.x + 1) * 2 * stride - 1;
         if(index + stride < 2 * blockDim.x)
         {
-            lessThan_s[index + stride] += lessThan_s[index];
-            greaterThan_s[index + stride] += greaterThan_s[index];
+            lessThanPrefixSum_s[index + stride] += lessThan_s[index];
+            greaterThanPrefixSum_s[index + stride] += greaterThan_s[index];
         }
     }
 
@@ -282,11 +292,14 @@ __global__ void partition_kernel (
     // If this was the last thread
     if (threadIdx.x == blockDim.x - 1)
     {
-        lsLocalSum_s = lessThan_s[2 * BLOCK_DIM - 1];
-        gtLocalSum_s = greaterThan_s[2 * BLOCK_DIM - 1];
+        ltLocalSum_s = lessThanPrefixSum_s[2 * BLOCK_DIM - 1];
+        gtLocalSum_s = greaterThanPrefixSum_s[2 * BLOCK_DIM - 1];
     }
 
     // ========================= Single pass scan =========================
+
+    // Synchronize all threads
+    __syncthreads();
 
     // If this was the first thread
     if (threadIdx.x == 0)
@@ -298,46 +311,64 @@ __global__ void partition_kernel (
         if(bid > 0)
         {
             // Read previous partial sums
-            lsPrevSum_s = lessThanSums[bid];
+            ltPrevSum_s = lessThanSums[bid];
             gtPrevSum_s = greaterThanSums[bid];
         }
         else
         {
             // No previous sums, set to zero
-            lsPrevSum_s = 0.0f;
-            gtPrevSum_s = 0.0f;
+            ltPrevSum_s = 0;
+            gtPrevSum_s = 0;
         }
 
-        // Propagate partial sum
-        lessThanSums[bid + 1] = lsPrevSum_s + lsLocalSum_s;
+        // Propagate to global partial sum
+        lessThanSums[bid + 1] = ltPrevSum_s + ltLocalSum_s;
         greaterThanSums[bid + 1] = gtPrevSum_s + gtLocalSum_s;
 
         // Memory fence
         __threadfence();
 
-        // Set flag
+        // Set flag and signal for the next block
         atomicAdd(&flags[bid + 1], 1);
     }
 
     // Synchronize all threads
     __syncthreads();
 
-    // ========================= Commit changes to global memory =========================
+    // *************************************************************************************
+    // ************************* Prefix sum (Brent Kung Inclusive) *************************
+    // *************************************************************************************
+
+    // ========================= Re-arrangement of the original array (Based on lessThan & greaterThan prefix sums) =========================
 
     if (i < arrSize)
     {
-        lessThan[i] = lessThan_s[threadIdx.x] + lsPrevSum_s + lsLocalSum_s;
-        greaterThan[i] = greaterThan_s[threadIdx.x] + gtPrevSum_s + gtLocalSum_s;
+        if(lessThan_s[threadIdx.x] == 1)
+        {
+            arr[lessThanPrefixSum_s[threadIdx.x] + ltPrevSum_s - 1] = arrCopy_s[threadIdx.x];
+        }
+
+        if(greaterThan_s[threadIdx.x] == 1)
+        {
+            arr[ltPrevSum_s + ltLocalSum_s + greaterThanPrefixSum_s[threadIdx.x]] = arrCopy_s[threadIdx.x];
+        }
     }
 
     if (i + blockDim.x < arrSize)
     {
-        lessThan[i + blockDim.x] = lessThan_s[threadIdx.x + blockDim.x] + lsPrevSum_s + lsLocalSum_s;
-        greaterThan[i + blockDim.x] = greaterThan_s[threadIdx.x + blockDim.x] + gtPrevSum_s + gtLocalSum_s;
+        if(lessThan_s[threadIdx.x + blockDim.x] == 1)
+        {
+            arr[lessThanPrefixSum_s[threadIdx.x + blockDim.x] + ltPrevSum_s - 1] = arrCopy_s[threadIdx.x + blockDim.x];
+        }
+
+        if(greaterThan_s[threadIdx.x + blockDim.x] == 1)
+        {
+            arr[ltPrevSum_s + ltLocalSum_s + greaterThanPrefixSum_s[threadIdx.x + blockDim.x]] = arrCopy_s[threadIdx.x + blockDim.x];
+        }
     }
 }
 
-//Advanced version of the parallel quicksort which parallelizes both the partition method and the recursive calls
+// Advanced version of the parallel quicksort which parallelizes both the partition method and the recursive calls
 __global__ void quicksort_advanced_kernel(
     int* arr,
     int* arrCopy,
