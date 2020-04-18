@@ -456,7 +456,7 @@ __global__ void quicksort_advanced_kernel(
     }
 }
 
-__host__ void quicksort_gpu(int* arr, int arrSize)
+__host__ void quicksort_gpu(int* arr, int arrSize, int inputArgumentCount, char** inputArguments)
 {
     //Define the timer
     Timer timer;
@@ -485,11 +485,7 @@ __host__ void quicksort_gpu(int* arr, int arrSize)
     cudaMalloc((void**) &blockCounter, arrSize * sizeof(int));
     cudaMalloc((void**) &flags, arrSize * sizeof(int));
 
-    ////Initialize all block counters to 0
-    //for (unsigned int i = 0; i < arrSize; i++)
-    //{
-    //    blockCounter[i] = 0;
-    //}
+	cudaMemset(blockCounter, 0, arrSize * sizeof(int));
 
     cudaDeviceSynchronize();
     stopTime(&timer);
@@ -510,8 +506,21 @@ __host__ void quicksort_gpu(int* arr, int arrSize)
     //Sorting on GPU
     if(arrSize > 1) 
 	{
-        //quicksort_advanced_kernel << < 1, 1, 0 >> > (arr_d, arrCopy, lessThan, greaterThan, partitionArr, lessThanSums, greaterThanSums, blockCounter, flags, 1, arrSize);
-        quicksort_naive_kernel << < 1, 1, 0 >> > (arr_d, arrSize, 1);
+		if (inputArgumentCount > 1)
+		{
+			if (strcmp(inputArguments[1], "naive") == 0)
+			{
+				quicksort_naive_kernel << < 1, 1, 0 >> > (arr_d, arrSize, 1);
+			}
+			else if (strcmp(inputArguments[1], "advanced") == 0)
+			{
+				quicksort_advanced_kernel << < 1, 1, 0 >> > (arr_d, arrCopy, lessThan, greaterThan, partitionArr, lessThanSums, greaterThanSums, blockCounter, flags, 1, arrSize);
+			}
+		}
+		else
+		{
+			quicksort_advanced_kernel << < 1, 1, 0 >> > (arr_d, arrCopy, lessThan, greaterThan, partitionArr, lessThanSums, greaterThanSums, blockCounter, flags, 1, arrSize);
+		}
     }
 
     cudaDeviceSynchronize();
