@@ -456,15 +456,16 @@ __global__ void quicksort_advanced_kernel(
     }
 }
 
+// This method will handle allocating and deallocating of the GPU memory in addition to calling the GPU version of the quick sort
 __host__ void quicksort_gpu(int* arr, int arrSize, int inputArgumentCount, char** inputArguments)
 {
-    //Define the timer
+    // Define the timer
     Timer timer;
 
-    //Allocate GPU memory
+    // Allocate GPU memory
     startTime(&timer);
     
-    //Declare and allocate required arrays on the device
+    // Declare required arrays on the device
     int* arr_d;
     int* arrCopy;
     int* lessThan;
@@ -475,6 +476,7 @@ __host__ void quicksort_gpu(int* arr, int arrSize, int inputArgumentCount, char*
     int* blockCounter;
     int* flags;
 
+    // Allocate required memory for arrays on the device
     cudaMalloc((void**) &arr_d, arrSize * sizeof(int));
     cudaMalloc((void**) &arrCopy, arrSize * sizeof(int));
     cudaMalloc((void**) &lessThan, arrSize * sizeof(int));
@@ -485,40 +487,44 @@ __host__ void quicksort_gpu(int* arr, int arrSize, int inputArgumentCount, char*
     cudaMalloc((void**) &blockCounter, arrSize * sizeof(int));
     cudaMalloc((void**) &flags, arrSize * sizeof(int));
 
+    // Initialize all block counter array elements to zero
 	cudaMemset(blockCounter, 0, arrSize * sizeof(int));
 
     cudaDeviceSynchronize();
     stopTime(&timer);
     printElapsedTime(timer, "Allocation time");
 
-    //Copy data to GPU
+    // Copy data to GPU
     startTime(&timer);
     
-    //Copy data for the array from host to device
+    // Copy data for the array from host to device
     cudaMemcpy(arr_d, arr, arrSize * sizeof(int), cudaMemcpyHostToDevice);
     cudaDeviceSynchronize();
     stopTime(&timer);
     printElapsedTime(timer, "Copy to GPU time");
 
-    //Call kernel
+    // Call kernel
     startTime(&timer);
 
-    //Sorting on GPU
+    // Sorting on GPU
     if(arrSize > 1) 
 	{
 		if (inputArgumentCount > 1)
 		{
 			if (strcmp(inputArguments[1], "naive") == 0)
 			{
+                // Execute the naive version
 				quicksort_naive_kernel << < 1, 1, 0 >> > (arr_d, arrSize, 1);
 			}
 			else if (strcmp(inputArguments[1], "advanced") == 0)
 			{
+                // Execute the advanced version
 				quicksort_advanced_kernel << < 1, 1, 0 >> > (arr_d, arrCopy, lessThan, greaterThan, partitionArr, lessThanSums, greaterThanSums, blockCounter, flags, 1, arrSize);
 			}
 		}
 		else
 		{
+            // If no parameters provided, execute the advanced version
 			quicksort_advanced_kernel << < 1, 1, 0 >> > (arr_d, arrCopy, lessThan, greaterThan, partitionArr, lessThanSums, greaterThanSums, blockCounter, flags, 1, arrSize);
 		}
     }
@@ -527,19 +533,19 @@ __host__ void quicksort_gpu(int* arr, int arrSize, int inputArgumentCount, char*
     stopTime(&timer);
     printElapsedTime(timer, "Kernel time");
 
-    //Copy data from GPU
+    // Copy data from GPU
     startTime(&timer);
     
-    //After performing the quick sort, copy the sorted array from device to host
+    // After performing the quick sort, copy the sorted array from device to host
     cudaMemcpy(arr, arr_d, arrSize * sizeof(int), cudaMemcpyDeviceToHost);
     cudaDeviceSynchronize();
     stopTime(&timer);
     printElapsedTime(timer, "Copy from GPU time");
 
-    //Free GPU memory
+    // Free GPU memory
     startTime(&timer);
     
-    //Now that we are done, we can free the allocated memory to leave space for other computations
+    // Now that we are done, we can free the allocated memory to leave space for other computations
     cudaFree(arr_d);
     cudaFree(arrCopy);    
     cudaFree(lessThan);

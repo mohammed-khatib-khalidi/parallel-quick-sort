@@ -15,6 +15,7 @@
 #include "device_launch_parameters.h"
 #endif
 
+// This method will take a string and trim any extra whitespace
 char* trimWhiteSpace(char *str)
 {
 	char *end;
@@ -85,6 +86,7 @@ void quicksort_cpu(int* arr, int arrSize)
 	}
 }
 
+// Main method
 int main(int argc, char**argv)
 {
     cudaDeviceSynchronize();
@@ -113,13 +115,8 @@ int main(int argc, char**argv)
 			inputArgumentCount++;
 		}
 	}
-
-    //Global array which will be used by the partition kernel
-    int* arrCopy_gpu = (int*) malloc(arrSize * sizeof(int));
-    int* lessThan_gpu = (int*) malloc(arrSize * sizeof(int));
-    int* greaterThan_gpu = (int*) malloc(arrSize * sizeof(int));
-    int* partition_gpu = (int*) malloc(arrSize * sizeof(int));
-    
+	
+	// Initialize array with a list of random numbers
 	for (unsigned int i = 0; i < arrSize; ++i) 
 	{
         int val = rand() % 1000 + 1;
@@ -186,7 +183,8 @@ int main(int argc, char**argv)
 
     // Free memory
     free(arr_cpu);
-    free(arr_gpu);
+	free(arr_gpu);
+	free(arr_init);
 
     //Exit program
     return 0;
