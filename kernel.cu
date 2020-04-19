@@ -328,7 +328,7 @@ __global__ void partition_kernel (
         // Memory fence
         __threadfence();
 
-        // Set flag and signal for the next block
+        // Set flag and signal for the next block to start
         atomicAdd(&flags[bid + 1], 1);
     }
 
@@ -354,6 +354,8 @@ __global__ void partition_kernel (
         }
     }
 
+    // TODO: Set the middle element "Pivot"
+
     if (i + blockDim.x < arrSize)
     {
         if(lessThan_s[threadIdx.x + blockDim.x] == 1)
@@ -363,7 +365,10 @@ __global__ void partition_kernel (
 
         if(greaterThan_s[threadIdx.x + blockDim.x] == 1)
         {
-            arr[ltPrevSum_s + ltLocalSum_s + greaterThanPrefixSum_s[threadIdx.x + blockDim.x]] = arrCopy_s[threadIdx.x + blockDim.x];
+            int k = ltPrevSum_s + ltLocalSum_s;
+            int gtPrefixSum = greaterThanPrefixSum_s[threadIdx.x + blockDim.x] + gtPrevSum_s;
+
+            arr[k + gtPrefixSum] = arrCopy_s[threadIdx.x + blockDim.x];
         }
     }
 }
