@@ -525,7 +525,7 @@ __host__ void quicksort_gpu(int* arr, int arrSize, int inputArgumentCount, char*
 		else
 		{
             // If no parameters provided, execute the advanced version
-			quicksort_advanced_kernel << < 1, 1, 0 >> > (arr_d, arrCopy, lessThan, greaterThan, partitionArr, lessThanSums, greaterThanSums, blockCounter, flags, 1, arrSize);
+			quicksort_advanced_kernel << < 1, 1, 0 >> > (arr_d, arrCopy, lessThan, greaterThan, lessThanSums, greaterThanSums, partitionArr, blockCounter, flags, 1, arrSize);
 		}
     }
 
