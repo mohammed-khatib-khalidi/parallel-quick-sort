@@ -139,7 +139,7 @@ int main(int argc, char**argv)
     stopTime(&timer);
     printElapsedTime(timer, "GPU time");
 
-	// Debugging (condition: debug_on = true)
+	// Debugging (condition: debug-on == true)
 	if (inputArgumentCount > 0 && strcmp(inputArguments[0], "debug-on") == 0)
 	{
 		printf("\nStarting arguments:\n");

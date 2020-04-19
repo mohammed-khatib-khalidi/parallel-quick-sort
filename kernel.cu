@@ -191,6 +191,8 @@ __global__ void partition_kernel (
     // Choose the middle element as the pivot
     int pivot = arr[(arrSize - 1) / 2];
 
+
+
     // Handle first element by the thread
     if(i < arrSize)
     {
@@ -252,6 +254,8 @@ __global__ void partition_kernel (
         }
     }
 
+	// After this phase the issues start to occur
+
     // *************************************************************************************
     // ************************* Prefix sum (Brent Kung Inclusive) *************************
     // *************************************************************************************
@@ -296,81 +300,91 @@ __global__ void partition_kernel (
         gtLocalSum_s = greaterThanPrefixSum_s[2 * BLOCK_DIM - 1];
     }
 
+	// Debug
+	printf("Pivot: %d\tI am here: 1\n", pivot);
+	__syncthreads();
+
     // ========================= Single pass scan =========================
 
-    // Synchronize all threads
-    __syncthreads();
+    //// Synchronize all threads
+    //__syncthreads();
 
-    // If this was the first thread
-    if (threadIdx.x == 0)
-    {
-        // Wait for previous flag
-        while (atomicAdd(&flags[bid], 0) == 0){;}
-        
-        // Check if there are blocks before
-        if(bid > 0)
-        {
-            // Read previous partial sums
-            ltPrevSum_s = lessThanSums[bid];
-            gtPrevSum_s = greaterThanSums[bid];
-        }
-        else
-        {
-            // No previous sums, set to zero
-            ltPrevSum_s = 0;
-            gtPrevSum_s = 0;
-        }
+    //// If this was the first thread
+    //if (threadIdx.x == 0)
+    //{
+    //    // Wait for previous flag
+    //    while (atomicAdd(&flags[bid], 0) == 0){;}
+    //    
+    //    // Check if there are blocks before
+    //    if(bid > 0)
+    //    {
+    //        // Read previous partial sums
+    //        ltPrevSum_s = lessThanSums[bid];
+    //        gtPrevSum_s = greaterThanSums[bid];
+    //    }
+    //    else
+    //    {
+    //        // No previous sums, set to zero
+    //        ltPrevSum_s = 0;
+    //        gtPrevSum_s = 0;
+    //    }
 
-        // Propagate to global partial sum
-        lessThanSums[bid + 1] = ltPrevSum_s + ltLocalSum_s;
-        greaterThanSums[bid + 1] = gtPrevSum_s + gtLocalSum_s;
+    //    // Propagate to global partial sum
+    //    lessThanSums[bid + 1] = ltPrevSum_s + ltLocalSum_s;
+    //    greaterThanSums[bid + 1] = gtPrevSum_s + gtLocalSum_s;
 
-        // Memory fence
-        __threadfence();
+    //    // Memory fence
+    //    __threadfence();
 
-        // Set flag and signal for the next block to start
-        atomicAdd(&flags[bid + 1], 1);
-    }
+    //    // Set flag and signal for the next block to start
+    //    atomicAdd(&flags[bid + 1], 1);
+    //}
 
-    // Synchronize all threads
-    __syncthreads();
+    //// Synchronize all threads
+    //__syncthreads();
 
-    // *************************************************************************************
-    // ************************* Prefix sum (Brent Kung Inclusive) *************************
-    // *************************************************************************************
+	printf("Pivot: %d\tI am here: 2\n", pivot);
+	__syncthreads();
 
-    // ========================= Re-arrangement of the original array (Based on lessThan & greaterThan prefix sums) =========================
+    //// *************************************************************************************
+    //// ************************* Prefix sum (Brent Kung Inclusive) *************************
+    //// *************************************************************************************
 
-    if (i < arrSize)
-    {
-        if(lessThan_s[threadIdx.x] == 1)
-        {
-            arr[lessThanPrefixSum_s[threadIdx.x] + ltPrevSum_s - 1] = arrCopy_s[threadIdx.x];
-        }
+    //// ========================= Re-arrangement of the original array (Based on lessThan & greaterThan prefix sums) =========================
 
-        if(greaterThan_s[threadIdx.x] == 1)
-        {
-            arr[ltPrevSum_s + ltLocalSum_s + greaterThanPrefixSum_s[threadIdx.x]] = arrCopy_s[threadIdx.x];
-        }
-    }
+    //if (i < arrSize)
+    //{
+    //    if(lessThan_s[threadIdx.x] == 1)
+    //    {
+    //        arr[lessThanPrefixSum_s[threadIdx.x] + ltPrevSum_s - 1] = arrCopy_s[threadIdx.x];
+    //    }
 
-    // TODO: Set the middle element "Pivot"
+    //    if(greaterThan_s[threadIdx.x] == 1)
+    //    {
+    //        arr[ltPrevSum_s + ltLocalSum_s + greaterThanPrefixSum_s[threadIdx.x]] = arrCopy_s[threadIdx.x];
+    //    }
+    //}
 
-    if (i + blockDim.x < arrSize)
-    {
-        if(lessThan_s[threadIdx.x + blockDim.x] == 1)
-        {
-            arr[lessThanPrefixSum_s[threadIdx.x + blockDim.x] + ltPrevSum_s - 1] = arrCopy_s[threadIdx.x + blockDim.x];
-        }
+	printf("Pivot: %d\tI am here: 3\n", pivot);
+	__syncthreads();
 
-        if(greaterThan_s[threadIdx.x + blockDim.x] == 1)
-        {
-            int k = ltPrevSum_s + ltLocalSum_s;
-            int gtPrefixSum = greaterThanPrefixSum_s[threadIdx.x + blockDim.x] + gtPrevSum_s;
+    //// TODO: Set the middle element "Pivot"
 
-            arr[k + gtPrefixSum] = arrCopy_s[threadIdx.x + blockDim.x];
-        }
-    }
+    //if (i + blockDim.x < arrSize)
+    //{
+    //    if(lessThan_s[threadIdx.x + blockDim.x] == 1)
+    //    {
+    //        arr[lessThanPrefixSum_s[threadIdx.x + blockDim.x] + ltPrevSum_s - 1] = arrCopy_s[threadIdx.x + blockDim.x];
+    //    }
+
+    //    if(greaterThan_s[threadIdx.x + blockDim.x] == 1)
+    //    {
+    //        int k = ltPrevSum_s + ltLocalSum_s;
+    //        int gtPrefixSum = greaterThanPrefixSum_s[threadIdx.x + blockDim.x] + gtPrevSum_s;
+
+    //        arr[k + gtPrefixSum] = arrCopy_s[threadIdx.x + blockDim.x];
+    //    }
+    //}
 }
 
 // Advanced version of the parallel quicksort which parallelizes both the partition method and the recursive calls
@@ -524,13 +538,13 @@ __host__ void quicksort_gpu(int* arr, int arrSize, int inputArgumentCount, char*
 			else if (strcmp(inputArguments[1], "advanced") == 0)
 			{
                 // Execute the advanced version
-				quicksort_advanced_kernel << < 1, 1, 0 >> > (arr_d, arrCopy, lessThan, greaterThan, partitionArr, lessThanSums, greaterThanSums, blockCounter, flags, 1, arrSize);
+				quicksort_advanced_kernel << < 1, 1, 0 >> > (arr_d, arrCopy, lessThan, greaterThan, lessThanSums, greaterThanSums, partitionArr, blockCounter, flags, 1, arrSize);
 			}
 		}
 		else
 		{
-            // If no parameters provided, execute the advanced version
-			quicksort_advanced_kernel << < 1, 1, 0 >> > (arr_d, arrCopy, lessThan, greaterThan, lessThanSums, greaterThanSums, partitionArr, blockCounter, flags, 1, arrSize);
+            // If no parameters provided, execute the naive version
+			quicksort_naive_kernel << < 1, 1, 0 >> > (arr_d, arrSize, 1);
 		}
     }
 
