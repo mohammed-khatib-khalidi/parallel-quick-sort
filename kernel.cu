@@ -298,10 +298,6 @@ __global__ void partition_kernel (
         gtLocalSum_s = greaterThanPrefixSum_s[2 * BLOCK_DIM - 1];
     }
 
-	//// Debug
-	//printf("Pivot: %d\tI am here: 1\n", pivot);
-	//__syncthreads();
-
     // ========================= Single pass scan =========================
 
     // Synchronize all threads
@@ -342,14 +338,12 @@ __global__ void partition_kernel (
     // Synchronize all threads
     __syncthreads();
 
-	//printf("Pivot: %d\tI am here: 2\n", pivot);
-	//__syncthreads();
 
-    //// *************************************************************************************
-    //// ************************* Prefix sum (Brent Kung Inclusive) *************************
-    //// *************************************************************************************
+    // *************************************************************************************
+    // ************************* Prefix sum (Brent Kung Inclusive) *************************
+    // *************************************************************************************
 
-    //// ========================= Re-arrangement of the original array (Based on lessThan & greaterThan prefix sums) =========================
+    // ========================= Re-arrangement of the original array (Based on lessThan & greaterThan prefix sums) =========================
 
     // Prefix sum for the last element of the less than array 
     int k = ltPrevSum_s + ltLocalSum_s;
@@ -387,9 +381,6 @@ __global__ void partition_kernel (
             arr[k + gtPrefixSum] = arrCopy_s[threadIdx.x];
         }
     }
-
-	//printf("Pivot: %d\tI am here: 3\n", pivot);
-	//__syncthreads();
 
     if (i + blockDim.x < arrSize)
     {
