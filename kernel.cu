@@ -191,8 +191,6 @@ __global__ void partition_kernel (
     // Choose the middle element as the pivot
     int pivot = arr[(arrSize - 1) / 2];
 
-
-
     // Handle first element by the thread
     if(i < arrSize)
     {
@@ -300,51 +298,52 @@ __global__ void partition_kernel (
         gtLocalSum_s = greaterThanPrefixSum_s[2 * BLOCK_DIM - 1];
     }
 
-	// Debug
-	printf("Pivot: %d\tI am here: 1\n", pivot);
-	__syncthreads();
+	//// Debug
+	//printf("Pivot: %d\tI am here: 1\n", pivot);
+	//__syncthreads();
 
     // ========================= Single pass scan =========================
 
-    //// Synchronize all threads
-    //__syncthreads();
+    // Synchronize all threads
+    __syncthreads();
 
-    //// If this was the first thread
-    //if (threadIdx.x == 0)
-    //{
-    //    // Wait for previous flag
-    //    while (atomicAdd(&flags[bid], 0) == 0){;}
-    //    
-    //    // Check if there are blocks before
-    //    if(bid > 0)
-    //    {
-    //        // Read previous partial sums
-    //        ltPrevSum_s = lessThanSums[bid];
-    //        gtPrevSum_s = greaterThanSums[bid];
-    //    }
-    //    else
-    //    {
-    //        // No previous sums, set to zero
-    //        ltPrevSum_s = 0;
-    //        gtPrevSum_s = 0;
-    //    }
+    // If this was the first thread
+    if (threadIdx.x == 0)
+    {
+        // Wait for previous flag
+        // Unless it was the first scheduled block
+        while (atomicAdd(&flags[bid], 0) == 0 && bid > 0){;}
+        
+        // Check if there are blocks before
+        if(bid > 0)
+        {
+            // Read previous partial sums
+            ltPrevSum_s = lessThanSums[bid];
+            gtPrevSum_s = greaterThanSums[bid];
+        }
+        else
+        {
+            // No previous sums, set to zero
+            ltPrevSum_s = 0;
+            gtPrevSum_s = 0;
+        }
 
-    //    // Propagate to global partial sum
-    //    lessThanSums[bid + 1] = ltPrevSum_s + ltLocalSum_s;
-    //    greaterThanSums[bid + 1] = gtPrevSum_s + gtLocalSum_s;
+        // Propagate to global partial sum
+        lessThanSums[bid + 1] = ltPrevSum_s + ltLocalSum_s;
+        greaterThanSums[bid + 1] = gtPrevSum_s + gtLocalSum_s;
 
-    //    // Memory fence
-    //    __threadfence();
+        // Memory fence
+        __threadfence();
 
-    //    // Set flag and signal for the next block to start
-    //    atomicAdd(&flags[bid + 1], 1);
-    //}
+        // Set flag and signal for the next block to start
+        atomicAdd(&flags[bid + 1], 1);
+    }
 
-    //// Synchronize all threads
-    //__syncthreads();
+    // Synchronize all threads
+    __syncthreads();
 
-	printf("Pivot: %d\tI am here: 2\n", pivot);
-	__syncthreads();
+	//printf("Pivot: %d\tI am here: 2\n", pivot);
+	//__syncthreads();
 
     //// *************************************************************************************
     //// ************************* Prefix sum (Brent Kung Inclusive) *************************
@@ -352,39 +351,64 @@ __global__ void partition_kernel (
 
     //// ========================= Re-arrangement of the original array (Based on lessThan & greaterThan prefix sums) =========================
 
-    //if (i < arrSize)
-    //{
-    //    if(lessThan_s[threadIdx.x] == 1)
-    //    {
-    //        arr[lessThanPrefixSum_s[threadIdx.x] + ltPrevSum_s - 1] = arrCopy_s[threadIdx.x];
-    //    }
+    // Prefix sum for the last element of the less than array 
+    int k = ltPrevSum_s + ltLocalSum_s;
 
-    //    if(greaterThan_s[threadIdx.x] == 1)
-    //    {
-    //        arr[ltPrevSum_s + ltLocalSum_s + greaterThanPrefixSum_s[threadIdx.x]] = arrCopy_s[threadIdx.x];
-    //    }
-    //}
+    // Get the number of scheduled blocks based on array size, block dimension and number of array elements per block 
+    unsigned int numThreadsPerBlock = BLOCK_DIM;
+    unsigned int numElementsPerBlock = 2 * numThreadsPerBlock;
+    unsigned int numBlocks = (arrSize + numElementsPerBlock - 1)/numElementsPerBlock;
 
-	printf("Pivot: %d\tI am here: 3\n", pivot);
-	__syncthreads();
+    // If this was the last thread in the last scheduled block
+    if(bid == numBlocks - 1 && threadIdx.x == blockDim.x - 1)
+    {
+        // Change the current position of the pivot to the new one identified by "k"
+        arr[k] = pivot;
 
-    //// TODO: Set the middle element "Pivot"
+        // Set the final partition according to which the recursive calls will be splitted
+        partitionArr[0] = k;
+    }
 
-    //if (i + blockDim.x < arrSize)
-    //{
-    //    if(lessThan_s[threadIdx.x + blockDim.x] == 1)
-    //    {
-    //        arr[lessThanPrefixSum_s[threadIdx.x + blockDim.x] + ltPrevSum_s - 1] = arrCopy_s[threadIdx.x + blockDim.x];
-    //    }
+    if (i < arrSize)
+    {
+        if(lessThan_s[threadIdx.x] == 1)
+        {
+            // The real lessThan prefix sum
+            int ltPrefixSum = ltPrevSum_s + lessThanPrefixSum_s[threadIdx.x];
 
-    //    if(greaterThan_s[threadIdx.x + blockDim.x] == 1)
-    //    {
-    //        int k = ltPrevSum_s + ltLocalSum_s;
-    //        int gtPrefixSum = greaterThanPrefixSum_s[threadIdx.x + blockDim.x] + gtPrevSum_s;
+            arr[ltPrefixSum - 1] = arrCopy_s[threadIdx.x];
+        }
 
-    //        arr[k + gtPrefixSum] = arrCopy_s[threadIdx.x + blockDim.x];
-    //    }
-    //}
+        if(greaterThan_s[threadIdx.x] == 1)
+        {
+            // The real greaterThan prefix sum
+            int gtPrefixSum = gtPrevSum_s + greaterThanPrefixSum_s[threadIdx.x];
+
+            arr[k + gtPrefixSum] = arrCopy_s[threadIdx.x];
+        }
+    }
+
+	//printf("Pivot: %d\tI am here: 3\n", pivot);
+	//__syncthreads();
+
+    if (i + blockDim.x < arrSize)
+    {
+        if(lessThan_s[threadIdx.x + blockDim.x] == 1)
+        {
+            // The real lessThan prefix sum
+            int ltPrefixSum = ltPrevSum_s + lessThanPrefixSum_s[threadIdx.x + blockDim.x];
+
+            arr[ltPrefixSum - 1] = arrCopy_s[threadIdx.x + blockDim.x];
+        }
+
+        if(greaterThan_s[threadIdx.x + blockDim.x] == 1)
+        {
+            // The real greaterThan prefix sum
+            int gtPrefixSum = gtPrevSum_s + greaterThanPrefixSum_s[threadIdx.x + blockDim.x];
+
+            arr[k + gtPrefixSum] = arrCopy_s[threadIdx.x + blockDim.x];
+        }
+    }
 }
 
 // Advanced version of the parallel quicksort which parallelizes both the partition method and the recursive calls
