@@ -25,6 +25,8 @@ __device__ void swap_gpu(int* a, int* b)
 
 // A sequential version of the selection sort
 // This algorithm will be applied after reaching the maximum recursion depth on gpu
+// The main advantage of the selection sort is that it performs well on a small list. 
+// Furthermore, because it is an in-place sorting algorithm, no additional temporary storage is required beyond what is needed to hold the original list.
 __device__ void selectionSort(int* arr, int arrSize) 
 { 
     int i, j, min_idx; 
