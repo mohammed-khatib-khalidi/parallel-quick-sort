@@ -172,7 +172,7 @@ __global__ void partition_kernel (
     if (threadIdx.x == 0)
     {
         //Get current block index and increment by 1
-        bid_s = atomicAdd(&blockCounter[0], 1);
+        bid_s = atomicAdd(&blockCounter[arrSize / 2], 1);
     }
 
     // Synchronize all threads
@@ -405,9 +405,12 @@ __global__ void partition_kernel (
 
     // //// ========================= Printing & Debugging =========================
 
-    if (threadIdx.x == blockDim.x - 1) //bid == numBlocks - 1 && 
+    if (bid == numBlocks - 1 && threadIdx.x == blockDim.x - 1)
     {
         printf("\n================================ START ================================\n");
+
+        printf("\nBlock id: %d\n", bid);
+        printf("\nTotal number of blocks: %d\n", numBlocks);
 
         printf("\nPivot: %d\n", pivot);
         printf("\nPartition: %d\n", k);
@@ -480,7 +483,7 @@ __global__ void quicksort_advanced_kernel(
 
     // Wait while the partition is set
     //while (atomicAdd(&partitionArr[arrSize / 2], 0) == -1) { ; }
-
+    
     // Set partition as middle element of the array after the partition kernel has done its work
     int k = partitionArr[arrSize / 2];
 
@@ -493,7 +496,7 @@ __global__ void quicksort_advanced_kernel(
         cudaStreamCreateWithFlags(&s_left, cudaStreamNonBlocking);
 
         // Sort the left partition
-		quicksort_advanced_kernel <<< 1, 1 >>> (
+		quicksort_advanced_kernel <<< 1, 1, 0, s_left >>> (
             &arr[0],
             &lessThanSums[0],
             &greaterThanSums[0],
@@ -517,7 +520,7 @@ __global__ void quicksort_advanced_kernel(
         cudaStreamCreateWithFlags(&s_right, cudaStreamNonBlocking);
 
         // Sort the right partition
-		quicksort_advanced_kernel <<< 1, 1 >>> (
+		quicksort_advanced_kernel <<< 1, 1, 0, s_right >>> (
             &arr[k + 1],
             &lessThanSums[k + 1],
             &greaterThanSums[k + 1],
