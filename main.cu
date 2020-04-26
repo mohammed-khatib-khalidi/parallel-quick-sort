@@ -15,6 +15,27 @@
 #include "device_launch_parameters.h"
 #endif
 
+// This method will take a string and trim any extra whitespace
+char* trimWhiteSpace(char *str)
+{
+	char *end;
+
+	// Trim leading space
+	while (((char)*str == ' ' || (char)*str == '\t' || (char)*str == '\n' || (char)*str == '\r')) str++;
+
+	if (*str == 0)  // All spaces?
+		return str;
+
+	// Trim trailing space
+	end = str + strlen(str) - 1;
+	while (end > str && ((char)*end == ' ' || (char)*end == '\t' || (char)*end == '\n' || (char)*end == '\r')) end--;
+
+	// Write new null terminator character
+	end[1] = '\0';
+
+	return str;
+}
+
 // Swap two elements of an array
 void swap_cpu(int* a, int* b)
 {
@@ -65,30 +86,48 @@ void quicksort_cpu(int* arr, int arrSize)
 	}
 }
 
+// Main method
 int main(int argc, char**argv)
 {
     cudaDeviceSynchronize();
 
     // Allocate memory and initialize data
     Timer timer;
-    unsigned int arrSize = (argc > 1) ? (atoi(argv[1])) : ARRAY_SIZE;
-    int* arr_cpu = (int*) malloc(arrSize * sizeof(int));
+	unsigned int arrSize = (argc > 1) ? (atoi(argv[1])) : ARRAY_SIZE;
+	int* arr_cpu = (int*) malloc(arrSize * sizeof(int));
     int* arr_gpu = (int*) malloc(arrSize * sizeof(int));
+	int* arr_init = (int*)malloc(arrSize * sizeof(int));
 
-    //Global array which will be used by the partition kernel
-    int* arrCopy_gpu = (int*) malloc(arrSize * sizeof(int));
-    int* lessThan_gpu = (int*) malloc(arrSize * sizeof(int));
-    int* greaterThan_gpu = (int*) malloc(arrSize * sizeof(int));
-    int* partition_gpu = (int*) malloc(arrSize * sizeof(int));
-    
+	// Input arguments to help with debugging and program launching
+	// Index 0: debug-on | debug-off
+	// Index 1: naive	 | advanced
+	int inputArgumentCount = 0;
+	char** inputArguments = (char**) malloc(argc * (10 * sizeof(char)));
+	if (argc > 2)
+	{
+		int i = 2;
+		while (argc > i)
+		{
+			inputArguments[i - 2] = (char*)malloc(strlen(argv[i]) * sizeof(char));
+			inputArguments[i - 2] = argv[i];
+			
+			i++;
+			inputArgumentCount++;
+		}
+	}
+	
+	// Initialize array with a list of random numbers
 	for (unsigned int i = 0; i < arrSize; ++i) 
 	{
-        int val = rand();
+        int val = rand() % 1000 + 1;
         arr_cpu[i] = val;
-        arr_gpu[i] = val;
+		arr_gpu[i] = val;
+		arr_init[i] = val;
     }
 
-    // Compute on CPU
+	printf("\n");
+
+	// Compute on CPU
     startTime(&timer);
 	quicksort_cpu(arr_cpu, arrSize);
     stopTime(&timer);
@@ -96,21 +135,41 @@ int main(int argc, char**argv)
 
     // Compute on GPU
     startTime(&timer);
-	quicksort_gpu(arr_gpu, arrSize);
+	quicksort_gpu(arr_gpu, arrSize, inputArgumentCount, inputArguments);
     stopTime(&timer);
     printElapsedTime(timer, "GPU time");
 
-    //printf("\n");
-    //for (unsigned int i = 0; i < arrSize; ++i) {
-    //    printf("%d ", arr_cpu[i]);
-    //}
-    //printf("\n");
+	// Debugging (condition: debug-on == true)
+	if (inputArgumentCount > 0 && strcmp(inputArguments[0], "debug-on") == 0)
+	{
+		printf("\nStarting arguments:\n");
+		for (int i = 0; i < inputArgumentCount; i++)
+		{
+			printf("%d: %s \n", i, inputArguments[i]);
+		}
 
-    //printf("\n");
-    //for (unsigned int i = 0; i < arrSize; ++i) {
-    //    printf("%d ", arr_gpu[i]);
-    //}
-    //printf("\n");
+		printf("\n");
+		printf("Initial Array:\t");
+		for (unsigned int i = 0; i < arrSize; ++i)
+		{
+			printf("%d ", arr_init[i]);
+		}
+
+		printf("\n");
+		printf("CPU Array:\t");
+		for (unsigned int i = 0; i < arrSize; ++i) 
+		{
+			printf("%d ", arr_cpu[i]);
+		}
+
+		printf("\n");
+		printf("GPU Array:\t");
+		for (unsigned int i = 0; i < arrSize; ++i) 
+		{
+			printf("%d ", arr_gpu[i]);
+		}
+		printf("\n\n");
+	}
 
     // Verify result
     for(unsigned int i = 0; i < arrSize; ++i) 
@@ -124,7 +183,8 @@ int main(int argc, char**argv)
 
     // Free memory
     free(arr_cpu);
-    free(arr_gpu);
+	free(arr_gpu);
+	free(arr_init);
 
     //Exit program
     return 0;
