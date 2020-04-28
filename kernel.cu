@@ -402,56 +402,6 @@ __global__ void partition_kernel (
 
     // Synchronize all threads
     __syncthreads();
-
-    // //// ========================= Printing & Debugging =========================
-
-    if (bid == numBlocks - 1 && threadIdx.x == blockDim.x - 1)
-    {
-        printf("\n================================ START ================================\n");
-
-        printf("\nBlock id: %d\n", bid);
-        printf("\nTotal number of blocks: %d\n", numBlocks);
-
-        printf("\nPivot: %d\n", pivot);
-        printf("\nPartition: %d\n", k);
-
-        printf("\n");
-        printf("Original Array:\t");
-        for(unsigned int i = 0; i < arrSize; i++)
-        {
-            printf("%d ", arrCopy_s[i]);
-        }
-        printf("\n");
-
-        printf("\n");
-        printf("Rearranged Array:\t");
-        for(unsigned int i = 0; i < arrSize; i++)
-        {
-            printf("%d ", arr[i]);
-        }
-        printf("\n");
-
-		printf("\n");
-		printf("Less Than Array:\t");
-        for(unsigned int i = 0; i < arrSize; i++)
-        {
-            printf("%d ", ltPrevSum_s + lessThan_s[i]);
-        }
-        printf("\n");
-
-		printf("\n");
-		printf("Greater Than Array:\t");
-        for(unsigned int i = 0; i < arrSize; i++)
-        {
-            printf("%d ", gtPrevSum_s + greaterThan_s[i]);
-        }
-        printf("\n");
-
-        printf("\n================================ END ================================\n");
-    }
-    
-    // Synchronize all threads
-    __syncthreads();
 }
 
 // Advanced version of the parallel quicksort which parallelizes both the partition method and the recursive calls
@@ -480,9 +430,6 @@ __global__ void quicksort_advanced_kernel(
 
 	// Partition
     partition_kernel <<< numBlocks, numThreadsPerBlock >>> (arr, lessThanSums, greaterThanSums, partitionArr, blockCounter, flags, numBlocks, arrSize);
-
-    // Wait while the partition is set
-    //while (atomicAdd(&partitionArr[arrSize / 2], 0) == -1) { ; }
     
     // Set partition as middle element of the array after the partition kernel has done its work
     int k = partitionArr[arrSize / 2];
@@ -596,8 +543,8 @@ __host__ void quicksort_gpu(int* arr, int arrSize, int inputArgumentCount, char*
 			}
 			else if (strcmp(inputArguments[1], "advanced") == 0)
 			{
-                //// Execute the advanced version
-                //quicksort_advanced_kernel << < 1, 1, 0 >> > (arr_d, lessThanSums, greaterThanSums, partitionArr, blockCounter, flags, 1, arrSize);
+                // // Execute the advanced version
+                // quicksort_advanced_kernel <<< 1, 1, 0 >>> (arr_d, lessThanSums, greaterThanSums, partitionArr, blockCounter, flags, 1, arrSize);
                 
                 // Configure the number of blocks and threads per block
                 const unsigned int numThreadsPerBlock = BLOCK_DIM;
