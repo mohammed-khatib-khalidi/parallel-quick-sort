@@ -189,8 +189,8 @@ __global__ void partition_kernel (
 
     // ========================= Copy to temporary, lessThan and greaterThan arrays =========================
 
-    // Choose the middle element as the pivot
-    int pivot = arr[(arrSize - 1) / 2];
+    // Choose the last element as the pivot
+    int pivot = arr[arrSize - 1];
 
     // Handle first element by the thread
     if(i < arrSize)
@@ -596,8 +596,16 @@ __host__ void quicksort_gpu(int* arr, int arrSize, int inputArgumentCount, char*
 			}
 			else if (strcmp(inputArguments[1], "advanced") == 0)
 			{
-                // Execute the advanced version
-				quicksort_advanced_kernel << < 1, 1, 0 >> > (arr_d, lessThanSums, greaterThanSums, partitionArr, blockCounter, flags, 1, arrSize);
+                //// Execute the advanced version
+                //quicksort_advanced_kernel << < 1, 1, 0 >> > (arr_d, lessThanSums, greaterThanSums, partitionArr, blockCounter, flags, 1, arrSize);
+                
+                // Configure the number of blocks and threads per block
+                const unsigned int numThreadsPerBlock = BLOCK_DIM;
+                const unsigned int numElementsPerBlock = 2 * numThreadsPerBlock;
+                const unsigned int numBlocks = (arrSize + numElementsPerBlock - 1) / numElementsPerBlock;
+
+                // Partition
+                partition_kernel <<< numBlocks, numThreadsPerBlock >>> (arr_d, lessThanSums, greaterThanSums, partitionArr, blockCounter, flags, numBlocks, arrSize);
 			}
 		}
 		else

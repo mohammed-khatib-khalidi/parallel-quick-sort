@@ -129,7 +129,8 @@ int main(int argc, char**argv)
 
 	// Compute on CPU
     startTime(&timer);
-	quicksort_cpu(arr_cpu, arrSize);
+	//quicksort_cpu(arr_cpu, arrSize);
+	partition_cpu(arr_cpu, arrSize);
     stopTime(&timer);
     printElapsedTime(timer, "CPU time");
 
