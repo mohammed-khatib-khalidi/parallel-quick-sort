@@ -184,7 +184,7 @@ int main(int argc, char**argv)
 	// Initialize array with a list of random numbers
 	for (unsigned int i = 0; i < arrSize; ++i) 
 	{
-        int val = rand(); //% 100 + 1;
+        int val = rand();
         arr_cpu[i] = val;
 		arr_gpu[i] = val;
 		arr_init[i] = val;
