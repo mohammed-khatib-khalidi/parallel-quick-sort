@@ -16,7 +16,7 @@
 #endif
 
 // Swap two elements of an array
-__device__ void swap_gpu(int* a, int* b)
+__device__ void swap_device(int* a, int* b)
 {
 	int temp = *a;
 	*a = *b;
@@ -27,7 +27,7 @@ __device__ void swap_gpu(int* a, int* b)
 // This algorithm will be applied after reaching the maximum recursion depth on gpu
 // The main advantage of the selection sort is that it performs well on a small list. 
 // Furthermore, because it is an in-place sorting algorithm, no additional temporary storage is required beyond what is needed to hold the original list.
-__device__ void selectionSort(int* arr, int arrSize) 
+__device__ void selectionSort_device(int* arr, int arrSize) 
 { 
     int i, j, min_idx; 
   
@@ -45,12 +45,12 @@ __device__ void selectionSort(int* arr, int arrSize)
         }
   
         // Swap the found minimum element with the first element 
-        swap_gpu(&arr[min_idx], &arr[i]); 
+        swap_device(&arr[min_idx], &arr[i]); 
     } 
 }
 
 // Computes the partition after rearranging the array
-__device__ int partition_gpu(int* arr, int arrSize)
+__device__ int partition_device(int* arr, int arrSize)
 {
 	// Index of smaller element
     int i = - 1;
@@ -63,33 +63,33 @@ __device__ int partition_gpu(int* arr, int arrSize)
 			// Increment the index of the smaller element
 			i++;
 			// Swap array elements with indices i and j
-			swap_gpu(&arr[i], &arr[j]);
+			swap_device(&arr[i], &arr[j]);
 		}
 	}
 
 	// Swap array elements with indices i + 1 and pivot
-	swap_gpu(&arr[i + 1], &arr[arrSize - 1]);
+	swap_device(&arr[i + 1], &arr[arrSize - 1]);
 
 	// Return partition index
     return (i + 1);
 }
 
 // Sequential version of the quicksort only applied for arrays of specific size threshold
-__device__ void quicksort_sequential(int* arr, int arrSize)
+__device__ void quicksort_device(int* arr, int arrSize)
 {
     // Partition
-    int k = partition_gpu(arr, arrSize);
+    int k = partition_device(arr, arrSize);
 
     if(k > 1)
     {
         // Sort the left partition
-        quicksort_sequential(&arr[0], k);
+        quicksort_device(&arr[0], k);
     }
     
     if(arrSize > k + 2)
     {
         // Sort the right partition
-        quicksort_sequential(&arr[k + 1], arrSize - k - 1);
+        quicksort_device(&arr[k + 1], arrSize - k - 1);
     }
 }
 
@@ -100,19 +100,19 @@ __global__ void quicksort_naive_kernel(int* arr, int arrSize, int depth)
     // Apply sequential selection sort
     if(depth > MAX_RECURSION)
     {
-        selectionSort(arr, arrSize);
+        selectionSort_device(arr, arrSize);
         return;
     }
 
     // If array size is small than a certain threshold, sort sequentially
     if(arrSize < ARRAY_THRESHOLD)
     {
-        quicksort_sequential(arr, arrSize);
+        quicksort_device(arr, arrSize);
     }
     else
     {
         // Partition
-        int k = partition_gpu(arr, arrSize);
+        int k = partition_device(arr, arrSize);
 
         if(k > 1) 
         {
@@ -152,7 +152,7 @@ __global__ void partition_kernel (
     int* arr,
     int* lessThanSums,
     int* greaterThanSums,
-    int* partitionArr,
+    int* partitionIdx,
     int* blockCounter,
     int* flags,
     int numBlocks,
@@ -172,7 +172,7 @@ __global__ void partition_kernel (
     if (threadIdx.x == 0)
     {
         //Get current block index and increment by 1
-        bid_s = atomicAdd(&blockCounter[arrSize / 2], 1);
+        bid_s = atomicAdd(&blockCounter[0], 1);
     }
 
     // Synchronize all threads
@@ -397,94 +397,15 @@ __global__ void partition_kernel (
         arr[k] = pivot;
 
         // Set the final partition according to which the recursive calls will be splitted
-        partitionArr[arrSize / 2] = k;
+        partitionIdx[0] = k;
     }
 
     // Synchronize all threads
     __syncthreads();
 }
 
-// Advanced version of the parallel quicksort which parallelizes both the partition method and the recursive calls
-__global__ void quicksort_advanced_kernel(
-    int* arr,
-    int* lessThanSums,
-    int* greaterThanSums,
-    int* partitionArr,
-    int* blockCounter,
-    int* flags,
-    int depth,
-    int arrSize)
-{
-    // If depth is more than maximum recursion
-    // Apply sequential selection sort
-    if(depth > MAX_RECURSION)
-    {
-        selectionSort(arr, arrSize);
-        return;
-    }
-
-    // Configure the number of blocks and threads per block
-    unsigned int numThreadsPerBlock = BLOCK_DIM;
-    unsigned int numElementsPerBlock = 2 * numThreadsPerBlock;
-    unsigned int numBlocks = (arrSize + numElementsPerBlock - 1) / numElementsPerBlock;
-
-	// Partition
-    partition_kernel <<< numBlocks, numThreadsPerBlock >>> (arr, lessThanSums, greaterThanSums, partitionArr, blockCounter, flags, numBlocks, arrSize);
-    
-    // Set partition as middle element of the array after the partition kernel has done its work
-    int k = partitionArr[arrSize / 2];
-
-    if(k > 1)
-	{
-        // Create cuda stream to run recursive calls in parallel
-        cudaStream_t s_left;
-
-        // Set the non-blocking flag for the cuda stream
-        cudaStreamCreateWithFlags(&s_left, cudaStreamNonBlocking);
-
-        // Sort the left partition
-		quicksort_advanced_kernel <<< 1, 1, 0, s_left >>> (
-            &arr[0],
-            &lessThanSums[0],
-            &greaterThanSums[0],
-            &partitionArr[0],
-            &blockCounter[0],
-            &flags[0],
-            depth + 1,
-            k
-        );
-
-        // Destroy the stream after getting done from it
-        cudaStreamDestroy(s_left);
-    }
-
-    if(arrSize > k + 2)
-	{
-        // Create cuda stream to run recursive calls in parallel
-        cudaStream_t s_right;
-
-        // Set the non-blocking flag for the cuda stream
-        cudaStreamCreateWithFlags(&s_right, cudaStreamNonBlocking);
-
-        // Sort the right partition
-		quicksort_advanced_kernel <<< 1, 1, 0, s_right >>> (
-            &arr[k + 1],
-            &lessThanSums[k + 1],
-            &greaterThanSums[k + 1],
-            &partitionArr[k + 1],
-            &blockCounter[k + 1],
-            &flags[k + 1],
-            depth + 1,
-            arrSize - k - 1
-        );
-
-        // Destroy the stream after getting done from it
-        cudaStreamDestroy(s_right);
-    }
-}
-
 // This method will handle allocating and deallocating of the GPU memory in addition to calling the GPU version of the quick sort
-__host__ void quicksort_gpu(int* arr, int arrSize, int inputArgumentCount, char** inputArguments)
+__host__ void quicksort_gpu(int* arr, int arrSize)
 {
     // Define the timer
     Timer timer;
@@ -534,32 +455,8 @@ __host__ void quicksort_gpu(int* arr, int arrSize, int inputArgumentCount, char*
     // Sorting on GPU
     if(arrSize > 1) 
 	{
-		if (inputArgumentCount > 1)
-		{
-			if (strcmp(inputArguments[1], "naive") == 0)
-			{
-                // Execute the naive version
-				quicksort_naive_kernel << < 1, 1, 0 >> > (arr_d, arrSize, 1);
-			}
-			else if (strcmp(inputArguments[1], "advanced") == 0)
-			{
-                // // Execute the advanced version
-                // quicksort_advanced_kernel <<< 1, 1, 0 >>> (arr_d, lessThanSums, greaterThanSums, partitionArr, blockCounter, flags, 1, arrSize);
-                
-                // Configure the number of blocks and threads per block
-                const unsigned int numThreadsPerBlock = BLOCK_DIM;
-                const unsigned int numElementsPerBlock = 2 * numThreadsPerBlock;
-                const unsigned int numBlocks = (arrSize + numElementsPerBlock - 1) / numElementsPerBlock;
-
-                // Partition
-                partition_kernel <<< numBlocks, numThreadsPerBlock >>> (arr_d, lessThanSums, greaterThanSums, partitionArr, blockCounter, flags, numBlocks, arrSize);
-			}
-		}
-		else
-		{
-            // If no parameters provided, execute the naive version
-			quicksort_naive_kernel << < 1, 1, 0 >> > (arr_d, arrSize, 1);
-		}
+        // Execute the naive version
+        quicksort_naive_kernel << < 1, 1, 0 >> > (arr_d, arrSize, 1);
     }
 
     cudaDeviceSynchronize();
@@ -589,4 +486,54 @@ __host__ void quicksort_gpu(int* arr, int arrSize, int inputArgumentCount, char*
     cudaDeviceSynchronize();
     stopTime(&timer);
     printElapsedTime(timer, "Deallocation time");
+}
+
+// This method will handle allocating and deallocating of the GPU memory in addition to calling the GPU version of the quick sort
+__host__ void partition_gpu(int* arr, int* partitionIdx, int arrSize)
+{
+    // Configure the number of blocks and threads per block
+    unsigned int numThreadsPerBlock = BLOCK_DIM;
+    unsigned int numElementsPerBlock = 2 * numThreadsPerBlock;
+    unsigned int numBlocks = (arrSize + numElementsPerBlock - 1) / numElementsPerBlock;
+
+    // Declare required arrays on the device
+    int* arr_d;
+    int* lessThanSums;
+    int* greaterThanSums;
+    int* partitionIdx_d;
+    int* blockCounter;
+    int* flags;
+
+    // Allocate required memory for arrays on the device
+    cudaMalloc((void**) &arr_d, arrSize * sizeof(int));
+    cudaMalloc((void**) &lessThanSums, arrSize * sizeof(int));
+    cudaMalloc((void**) &greaterThanSums, arrSize * sizeof(int));
+    cudaMalloc((void**) &partitionIdx_d, sizeof(int));
+    cudaMalloc((void**) &blockCounter, sizeof(int));
+    cudaMalloc((void**) &flags, numBlocks * sizeof(int));
+
+    // Initialize required arrays
+    cudaMemset(lessThanSums, 0, arrSize * sizeof(int));
+    cudaMemset(greaterThanSums, 0, arrSize * sizeof(int));
+    cudaMemset(blockCounter, 0, sizeof(int));
+    cudaMemset(flags, 0, numBlocks * sizeof(int));
+    
+    // Copy data for the array from host to device
+    cudaMemcpy(arr_d, arr, arrSize * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(partitionIdx_d, partitionIdx, sizeof(int), cudaMemcpyHostToDevice);
+
+    // Partition on GPU
+    partition_kernel <<< numBlocks, numThreadsPerBlock >>> (arr_d, lessThanSums, greaterThanSums, partitionIdx_d, blockCounter, flags, numBlocks, arrSize);
+    
+    // After performing the quick sort, copy the sorted array from device to host
+    cudaMemcpy(arr, arr_d, arrSize * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(partitionIdx, partitionIdx_d, sizeof(int), cudaMemcpyDeviceToHost);
+    
+    // Now that we are done, we can free the allocated memory to leave space for other computations
+    cudaFree(arr_d);
+    cudaFree(lessThanSums);
+    cudaFree(greaterThanSums);
+    cudaFree(partitionIdx_d);
+    cudaFree(blockCounter);
+    cudaFree(flags);
 }
