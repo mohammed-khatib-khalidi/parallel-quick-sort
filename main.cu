@@ -44,6 +44,32 @@ void swap_cpu(int* a, int* b)
 	*b = temp;
 }
 
+// A sequential version of the selection sort
+// This algorithm will be applied after reaching the maximum recursion depth on gpu
+// The main advantage of the selection sort is that it performs well on a small list. 
+// Furthermore, because it is an in-place sorting algorithm, no additional temporary storage is required beyond what is needed to hold the original list.
+void selectionSort_cpu(int* arr, int arrSize) 
+{ 
+    int i, j, min_idx; 
+  
+    // One by one move boundary of unsorted subarray 
+    for (i = 0; i < arrSize - 1; i++) 
+    { 
+        // Find the minimum element in unsorted array 
+        min_idx = i; 
+        for (j = i+1; j < arrSize; j++)
+        {
+            if (arr[j] < arr[min_idx])
+            {
+                min_idx = j;
+            }
+        }
+  
+        // Swap the found minimum element with the first element 
+        swap_cpu(&arr[min_idx], &arr[i]); 
+    } 
+}
+
 // Computes the partition after rearranging the array
 int partition_cpu(int* arr, int arrSize)
 {
@@ -86,6 +112,45 @@ void quicksort_cpu(int* arr, int arrSize)
 	}
 }
 
+// Sorts an array with the quick sort algorithm
+// This is a hybrid solution that mixes between a parallel partition method which is executed on the gpu and a sequential recursive call
+void quicksort_hybrid(int* arr, int arrSize, int depth)
+{
+    // If depth is more than maximum recursion
+    // Apply sequential selection sort
+    if(depth > MAX_RECURSION)
+    {
+        selectionSort_cpu(arr, arrSize);
+        return;
+    }
+
+	// Array size must be greater than 1
+	if (arrSize > 1)
+	{
+		// Partition
+		int* partitionIdx = (int*) malloc(sizeof(int));
+		partitionIdx[0] = -1;
+
+		// Compute the partition on the gpu
+		partition_gpu(arr, partitionIdx, arrSize);
+
+		// Get the partition
+		int k = partitionIdx[0];
+
+		if(k > 1)
+		{
+			// Sort the left partition
+			quicksort_hybrid(&arr[0], k, depth + 1);
+		}
+
+		if(arrSize > k + 2)
+		{
+			// Sort the right partition
+			quicksort_hybrid(&arr[k + 1], arrSize - k - 1, depth + 1);
+		}
+	}
+}
+
 // Main method
 int main(int argc, char**argv)
 {
@@ -119,7 +184,7 @@ int main(int argc, char**argv)
 	// Initialize array with a list of random numbers
 	for (unsigned int i = 0; i < arrSize; ++i) 
 	{
-        int val = rand() % 1000 + 1;
+        int val = rand(); //% 100 + 1;
         arr_cpu[i] = val;
 		arr_gpu[i] = val;
 		arr_init[i] = val;
@@ -134,8 +199,27 @@ int main(int argc, char**argv)
     printElapsedTime(timer, "CPU time");
 
     // Compute on GPU
-    startTime(&timer);
-	quicksort_gpu(arr_gpu, arrSize, inputArgumentCount, inputArguments);
+	startTime(&timer);
+	
+	if (inputArgumentCount > 1)
+	{
+		if (strcmp(inputArguments[1], "naive") == 0)
+		{
+			// Naive version
+			quicksort_gpu(arr_gpu, arrSize);
+		}
+		else if (strcmp(inputArguments[1], "advanced") == 0)
+		{
+			// Advanced hybrid version
+			quicksort_hybrid(arr_gpu, arrSize, 1);
+		}
+	}
+	else
+	{
+		// If no parameters provided, execute the naive version
+		quicksort_gpu(arr_gpu, arrSize);
+	}
+
     stopTime(&timer);
     printElapsedTime(timer, "GPU time");
 
